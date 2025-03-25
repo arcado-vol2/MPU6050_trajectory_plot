@@ -1,8 +1,12 @@
 #include <Wire.h>
 #include <MPU6050_6Axis_MotionApps20.h>
+#include <MPU6050.h>
 
 #define BUTTON_PIN 3
 #define BUTTON_TIMER_AMOUNT 60
+#define ACCEL_CONST 16384.0
+#define GYRO_CONST 131.0
+
 
 MPU6050 mpu;
 bool dmpReady = false;
@@ -33,6 +37,9 @@ void setup() {
         packetSize = mpu.dmpGetFIFOPacketSize();
     }
     buttonTimer = millis();
+    mpu.CalibrateGyro(15);
+    mpu.CalibrateAccel(15);
+    Serial.println("\nCallibration complete");
 }
 
 void loop() {
@@ -78,10 +85,32 @@ void loop() {
         
         mpu.dmpGetQuaternion(&q, fifoBuffer);
         mpu.dmpGetGravity(&gravity, &q);
-        
-        Serial.print(q.w); Serial.print(",");
-        Serial.print(q.x); Serial.print(",");
-        Serial.print(q.y); Serial.print(",");
-        Serial.println(q.z);
+
+        int16_t ax, ay, az;  
+        int16_t gx, gy, gz;  
+
+        mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+        // Translate to G и deg/sec
+        float accelX = ax / ACCEL_CONST;
+        float accelY = ay / ACCEL_CONST;
+        float accelZ = az / ACCEL_CONST;
+
+        float gyroX = gx / GYRO_CONST;
+        float gyroY = gy / GYRO_CONST;
+        float gyroZ = gz / GYRO_CONST;
+
+        Serial.print(q.w, 6); Serial.print(",");
+        Serial.print(q.x, 6); Serial.print(",");
+        Serial.print(q.y, 6); Serial.print(",");
+        Serial.print(q.z, 6); Serial.print(",");
+        Serial.print(accelX, 6); Serial.print(",");
+        Serial.print(accelY, 6); Serial.print(",");
+        Serial.println(accelZ, 6); Serial.print(",");
+        Serial.print(gyroX, 6); Serial.print(",");
+        Serial.print(gyroY, 6); Serial.print(",");
+        Serial.println(gyroZ, 6);
+
+
     }
 }
