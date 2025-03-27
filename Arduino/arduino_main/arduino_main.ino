@@ -37,9 +37,9 @@ void setup() {
         packetSize = mpu.dmpGetFIFOPacketSize();
     }
     buttonTimer = millis();
-    mpu.CalibrateGyro(15);
-    mpu.CalibrateAccel(15);
-    Serial.println("\nCallibration complete");
+    //mpu.CalibrateGyro(15);
+    //mpu.CalibrateAccel(15);
+    //Serial.println("\nCallibration complete");
 }
 
 void loop() {
@@ -69,48 +69,25 @@ void loop() {
     #pragma endringon Button_handler
 
     
-    if (!isBroadcasting) return;
-    if (!dmpReady) return;
-    mpuIntStatus = mpu.getIntStatus();
-    fifoCount = mpu.getFIFOCount();
+    if (!isBroadcasting || !dmpReady) return;
     
-    if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
-        mpu.resetFIFO();
-    } 
-    else if (mpuIntStatus & 0x02) {
-        while (fifoCount < packetSize) 
-          fifoCount = mpu.getFIFOCount(); //mb int better?
+    // Оптимизированное чтение FIFO
+    if (mpu.getIntStatus() & 0x02) {
         mpu.getFIFOBytes(fifoBuffer, packetSize);
-        fifoCount -= packetSize;
         
         mpu.dmpGetQuaternion(&q, fifoBuffer);
         mpu.dmpGetGravity(&gravity, &q);
 
-        int16_t ax, ay, az;  
-        int16_t gx, gy, gz;  
-
-        mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-
-        // Translate to G и deg/sec
-        float accelX = ax / ACCEL_CONST;
-        float accelY = ay / ACCEL_CONST;
-        float accelZ = az / ACCEL_CONST;
-
-        float gyroX = gx / GYRO_CONST;
-        float gyroY = gy / GYRO_CONST;
-        float gyroZ = gz / GYRO_CONST;
-
-        Serial.print(q.w, 6); Serial.print(",");
-        Serial.print(q.x, 6); Serial.print(",");
-        Serial.print(q.y, 6); Serial.print(",");
-        Serial.print(q.z, 6); Serial.print(",");
-        Serial.print(accelX, 6); Serial.print(",");
-        Serial.print(accelY, 6); Serial.print(",");
-        Serial.println(accelZ, 6); Serial.print(",");
-        Serial.print(gyroX, 6); Serial.print(",");
-        Serial.print(gyroY, 6); Serial.print(",");
-        Serial.println(gyroZ, 6);
-
-
+        // Прямое чтение сырых данных без промежуточных переменных
+        Serial.print(q.w, 4); Serial.print(',');
+        Serial.print(q.x, 4); Serial.print(',');
+        Serial.print(q.y, 4); Serial.print(',');
+        Serial.print(q.z, 4); Serial.print(',');
+        
+        int16_t ax, ay, az;
+        mpu.getAcceleration(&ax, &ay, &az);
+        Serial.print(ax / ACCEL_CONST, 4); Serial.print(',');
+        Serial.print(ay / ACCEL_CONST, 4); Serial.print(',');
+        Serial.println(az / ACCEL_CONST, 4);
     }
 }
