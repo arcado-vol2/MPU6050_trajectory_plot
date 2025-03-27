@@ -1,0 +1,119 @@
+#include <Wire.h>
+#include <MPU6050_6Axis_MotionApps20.h>
+#include <MPU6050.h>
+
+// Настройки пинов
+#define BUTTON_PIN 4          // Кнопка на D4 (без прерывания)
+#define INT_PIN 3             // Прерывание MPU6050 на D3
+#define BUTTON_DEBOUNCE_MS 60 // Защита от дребезга (мс)
+
+// Константы MPU6050 (не меняются)
+#define FIFO_BUFFER_SIZE 64
+
+MPU6050 mpu;
+bool dmpReady = false;
+uint8_t mpuIntStatus;
+uint8_t devStatus;
+uint16_t packetSize;
+uint8_t fifoBuffer[FIFO_BUFFER_SIZE];
+
+Quaternion q;       // Кватернион [w, x, y, z]
+VectorInt16 aa;     // Ускорения [x, y, z]
+VectorFloat gravity; // Гравитация [x, y, z]
+
+// Флаги состояния
+bool isBroadcasting = false;
+bool isButtonPressed = false;
+uint32_t buttonTimer = 0;
+
+// ===========================================
+// Настройка
+// ===========================================
+void setup() {
+    Serial.begin(230400);
+    
+    // Инициализация кнопки
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    buttonTimer = millis();
+
+    // Инициализация MPU6050
+    Wire.begin();
+    mpu.initialize();
+    devStatus = mpu.dmpInitialize();
+
+    // Настройка DMP
+    if (devStatus == 0) {
+        mpu.setDMPEnabled(true);
+        dmpReady = true;
+        packetSize = mpu.dmpGetFIFOPacketSize();
+        
+        // Настройка прерывания от MPU6050
+        pinMode(INT_PIN, INPUT);
+        attachInterrupt(digitalPinToInterrupt(INT_PIN), [] {
+            mpuIntStatus = mpu.getIntStatus();
+        }, RISING);
+    } else {
+        Serial.println("Ошибка инициализации DMP!");
+    }
+
+    // Калибровка (раскомментировать при первом запуске)
+    // mpu.CalibrateGyro(10);
+    // mpu.CalibrateAccel(10);
+    // Serial.println("Калибровка завершена");
+}
+
+// ===========================================
+// Главный цикл
+// ===========================================
+void loop() {
+    // 1. Обработка кнопки (без прерываний)
+    handleButton();
+
+    // 2. Если запись выключена или DMP не готов - пропускаем
+    if (!isBroadcasting || !dmpReady) return;
+
+    // 3. Проверка прерывания от MPU6050
+    if (mpuIntStatus & 0x02) {
+        mpuIntStatus = 0; // Сброс флага
+
+        // Чтение FIFO
+        fifoCount = mpu.getFIFOCount();
+        if (fifoCount >= 1024) mpu.resetFIFO(); // Защита от переполнения
+        
+        mpu.getFIFOBytes(fifoBuffer, packetSize);
+        
+        // Получение данных
+        mpu.dmpGetQuaternion(&q, fifoBuffer);
+        mpu.dmpGetAccel(&aa, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+
+        // Вывод в Serial (CSV формат)
+        Serial.print(q.w); Serial.print(",");
+        Serial.print(q.x); Serial.print(",");
+        Serial.print(q.y); Serial.print(",");
+        Serial.print(q.z); Serial.print(",");
+        Serial.print(aa.x); Serial.print(",");
+        Serial.print(aa.y); Serial.print(",");
+        Serial.println(aa.z);
+    }
+}
+
+// ===========================================
+// Обработчик кнопки
+// ===========================================
+void handleButton() {
+    bool currentState = !digitalRead(BUTTON_PIN); // Инвертируем, т.к. PULLUP
+
+    // Защита от дребезга
+    if (currentState != isButtonPressed && millis() - buttonTimer > BUTTON_DEBOUNCE_MS) {
+        isButtonPressed = currentState;
+        buttonTimer = millis();
+
+        if (isButtonPressed) { // Нажатие
+            isBroadcasting = !isBroadcasting;
+            Serial.println(isBroadcasting ? "Start recording" : "Stop recording");
+            
+            if (!isBroadcasting) delay(BUTTON_DEBOUNCE_MS); // Пауза после отпускания
+        }
+    }
+}

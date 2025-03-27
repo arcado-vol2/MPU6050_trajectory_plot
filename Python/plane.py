@@ -9,7 +9,7 @@ import csv
 from datetime import datetime
 import os
 
-ser = serial.Serial('COM9', 115200, timeout=0.001)
+ser = serial.Serial('COM5', 115200, timeout=0.001)
 ser.flushInput()
 
 # Параметры платы
@@ -109,22 +109,23 @@ def read_serial():
                 continue
                 
             # Если идет запись и строка содержит данные кватерниона
-            if is_recording and line.count(',') == 3:
+            print(line, line.count(','))
+            if is_recording and line.count(',') == 6:
                 try:
                     data = list(map(float, line.split(',')))
-                    if len(data) == 4:
-                        q = np.array(data)
+                    if len(data) == 7:
+                        # Сохраняем все данные, но для вращения используем только кватернион
+                        q = np.array(data[:4])  # Только кватернион
                         
-                        # Проверяем, инициализирован ли csv_writer
                         if csv_writer is not None:
                             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                            csv_writer.writerow([timestamp, q[0], q[1], q[2], q[3]])
+                            csv_writer.writerow([timestamp] + data[:4])  # Записываем только кватернион
                             csv_file.flush()
                 except ValueError as e:
                     print(f"Ошибка преобразования данных: {e}")
                     
         except UnicodeDecodeError:
-            print("Ошибка декодирования строки")
+            print("Ошибка декодирования строки", line)
         except Exception as e:
             print(f"Ошибка при обработке данных: {e}")
 
@@ -134,13 +135,32 @@ def display():
     gluLookAt(3, 2, 3, 0, 0, 0, 0, 0, 1)
     
     # Применение кватерниона
-    angle = 2 * math.acos(q[0])
-    norm = max(0.001, math.sqrt(1 - q[0]**2))
-    x, y, z = q[1]/norm, q[2]/norm, q[3]/norm
-    glRotatef(math.degrees(angle), x, y, z)
-    
-    draw_board()
-    glutSwapBuffers()
+    try:
+        # Берем только первые 4 элемента (кватернион)
+        quat = q[:4]
+        
+        # Нормализуем кватернион
+        norm = np.linalg.norm(quat)
+        if norm < 0.001:
+            # Нулевой кватернион - не применяем вращение
+            pass
+        else:
+            quat = quat / norm
+            
+            # Убедимся, что w компонента в допустимом диапазоне
+            w = max(-1.0, min(1.0, quat[0]))
+            angle = 2 * math.acos(w)
+            
+            # Вычисляем ось вращения
+            axis_norm = math.sqrt(1 - w**2)
+            if axis_norm > 0.001:
+                x, y, z = quat[1]/axis_norm, quat[2]/axis_norm, quat[3]/axis_norm
+                glRotatef(math.degrees(angle), x, y, z)
+        
+        draw_board()
+        glutSwapBuffers()
+    except Exception as e:
+        print(f"Ошибка в display: {e}, q={q}")
 
 def idle():
     read_serial()

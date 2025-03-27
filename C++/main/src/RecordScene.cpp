@@ -45,6 +45,7 @@ RecordScene::RecordScene(COM::Port* comPort) : Scene(comPort) {
 
     // Инициализация кватерниона (w, x, y, z)
     q = { 1.0f, 0.0f, 0.0f, 0.0f };
+    a = { 0.0f, 0.0f, 0.0f };
 
     if (p_comPort && p_comPort->IsOpen()) {  // Проверка указателя и состояния порта
         // Пор уже открыт, ничего не делаем
@@ -102,7 +103,7 @@ void RecordScene::StartNewRecording() {
     csvFile.open(csvFilePath);
     if (csvFile.is_open()) {
         // Записываем заголовок
-        csvFile << "t,w,x,y,z\n";
+        csvFile << "t,w,x,y,z,ax,ay,az\n";
     }
     else {
         std::cout << "error due file creating " << csvFilePath << std::endl;
@@ -135,51 +136,51 @@ void RecordScene::StopRecording() {
         csvFile.close();
     }
 }
-
 void RecordScene::Update() {
-    if (!p_comPort || !p_comPort->IsOpen()) {
-        std::cerr << "COM port obj not exist or port not open";
-        return;  // Проверка указателя и состояния
+    if (!p_comPort || !p_comPort->IsOpen()) return;
+
+    std::string data = p_comPort->Read();
+    if (data.empty()) return;
+
+    // Проверка команд управления записью
+    if (data.find("Start recording") != std::string::npos) {
+        isRecording = true;
+        return;
     }
-
-    std::string data = p_comPort->Read();  // Доступ через указатель
-    std::cout << data << std::endl;
-
-    data.erase(std::remove(data.begin(), data.end(), '\r'), data.end());
-    data.erase(std::remove(data.begin(), data.end(), '\n'), data.end());
-    trim(data);
-    if (!data.empty()) {
-        if (data == "Start recording") {
-            isRecording = true;
-            StartNewRecording();
-            return;  
-        }
-        if (isRecording) {
-            size_t pos1 = data.find(',');
-            size_t pos2 = data.find(',', pos1 + 1);
-            size_t pos3 = data.find(',', pos2 + 1);
-
-            if (pos1 != std::string::npos && pos2 != std::string::npos && pos3 != std::string::npos) {
-                try {
-                    q[0] = std::stof(data.substr(0, pos1));
-                    q[1] = std::stof(data.substr(pos1 + 1, pos2 - pos1 - 1));
-                    q[2] = std::stof(data.substr(pos2 + 1, pos3 - pos2 - 1));
-                    q[3] = std::stof(data.substr(pos3 + 1));
-
-                    WriteQToCSV();
-                }
-                catch (...) {
-                    // Ошибка преобразования
-                }
-            }
-        }
-    }
-    else {
+    else if (data.find("Stop recording") != std::string::npos) {
         isRecording = false;
-        StopRecording();
-        q = { 1.0f, 0.0f, 0.0f, 0.0f };
+        return;
+    }
+
+    if (!isRecording) return;
+
+    // Быстрый парсинг данных (формат: w,x,y,z,ax,ay,az)
+    size_t pos = 0;
+    size_t comma_pos;
+    float values[7];
+    int i = 0;
+
+    try {
+        while ((comma_pos = data.find(',', pos)) != std::string::npos && i < 7) {
+            values[i++] = std::stof(data.substr(pos, comma_pos - pos));
+            pos = comma_pos + 1;
+        }
+        // Последнее значение (az) после последней запятой до конца строки
+        if (i < 7 && pos < data.size()) {
+            values[i++] = std::stof(data.substr(pos));
+        }
+
+        if (i == 7) { // Все 7 значений успешно прочитаны
+            // Копируем в массивы
+            std::copy(values, values + 4, q.begin());
+            std::copy(values + 4, values + 7, a.begin());
+        }
+    }
+    catch (...) {
+        // Ошибка парсинга - пропускаем этот пакет
     }
 }
+
 
 void RecordScene::Render() {
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);

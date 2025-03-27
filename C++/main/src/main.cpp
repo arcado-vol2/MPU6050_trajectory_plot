@@ -32,7 +32,7 @@ void SetupCurrentPort(const std::string& name){
     if (currentPort) {
         currentPort->Close();
     }
-    currentPort = std::make_unique<COM::Port>(name, CBR_115200);
+    currentPort = std::make_unique<COM::Port>(name, 230400);
     if (!currentPort->Open()) {
         currentPort.reset(); 
         selectedPortIndex = -1;
@@ -159,29 +159,15 @@ int main(void)
 
 #pragma region imgui_general
         ImGui::Begin("Main control");
-        ImGui::Text("Select scene to render:");
-        int currentSceneIndex = static_cast<int>(currentSceneType);
-        if (ImGui::Combo("Scene", &currentSceneIndex, sceneItems, IM_ARRAYSIZE(sceneItems)))
-        {
-            if (currentPort->IsOpen())
-                currentPort->Close();
-            SceneType newSceneType = static_cast<SceneType>(currentSceneIndex);
-            if (newSceneType != currentSceneType) {
-                currentSceneType = newSceneType;
-                currentScene = CreateScene(currentSceneType);
-                if (currentScene) {
-                    currentScene->InitRender();
-                }
-            }
-        }
-        ImGui::Separator();
 
+
+        
 
         ImGui::Text("COM port controls");
         if (ImGui::Button("Refresh COM ports")) {
             UpdateAvailablePorts();
         }
-        
+
         if (ImGui::BeginCombo("port", selectedPortIndex == -1 ? "None" : comPorts[selectedPortIndex].c_str())) {
             for (size_t i = 0; i < comPorts.size(); i++) {
                 bool isSelected = (selectedPortIndex == i);
@@ -195,7 +181,32 @@ int main(void)
             }
             ImGui::EndCombo();
         }
+        
+        ImGui::Separator();
+
+        ImGui::Text("Select scene to render:");
+        int currentSceneIndex = static_cast<int>(currentSceneType);
+        if (ImGui::Combo("Scene", &currentSceneIndex, sceneItems, IM_ARRAYSIZE(sceneItems)))
+        {
+            SceneType newSceneType = static_cast<SceneType>(currentSceneIndex);
+
+            // Проверяем, что currentPort не nullptr, если новая сцена не NORENDER или PLAY
+            if (currentPort != nullptr || newSceneType == SceneType::NORENDER || newSceneType == SceneType::PLAY) {
+                if (currentPort != nullptr && currentPort->IsOpen())
+                    currentPort->Close();
+
+                if (newSceneType != currentSceneType) {
+                    currentSceneType = newSceneType;
+                    currentScene = CreateScene(currentSceneType);
+                    if (currentScene) {
+                        currentScene->InitRender();
+                    }
+                }
+            }
+        }
         ImGui::End();
+
+        
 #pragma endregion
 
         

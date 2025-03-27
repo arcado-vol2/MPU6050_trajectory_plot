@@ -3,7 +3,7 @@
 #define RECORDCENE_H
 
 #include "Scenes.h"
-#include <vector>
+#include <array>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <fstream>
@@ -51,7 +51,8 @@ private:
     float AXIS_LENGTH;
 
     // Кватернион для ориентации (w, x, y, z)
-    std::vector<float> q;
+    std::array<float, 4> q;
+    std::array<float, 3> a;
 
 
 };

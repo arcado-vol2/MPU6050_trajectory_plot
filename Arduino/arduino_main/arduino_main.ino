@@ -1,93 +1,105 @@
-#include <Wire.h>
-#include <MPU6050_6Axis_MotionApps20.h>
-#include <MPU6050.h>
+#include "MPU6050_6Axis_MotionApps20.h"
 
 #define BUTTON_PIN 3
-#define BUTTON_TIMER_AMOUNT 60
-#define ACCEL_CONST 16384.0
-#define GYRO_CONST 131.0
+#define DEBOUNCE_DELAY 50
+#define BUFFER_SIZE 45
+#define SERIAL_SPEED 115200
+#define ENABLE_CALIBRATION 1
+#define ACCEL_SCALE 8192.0
 
 
 MPU6050 mpu;
-bool dmpReady = false;
-uint8_t mpuIntStatus;
-uint8_t devStatus;
-uint16_t packetSize;
-uint16_t fifoCount;
-uint8_t fifoBuffer[64];
+volatile bool mpuFlag = false;  // mpu interaption flag
+volatile bool buttonPressed = false;
+volatile bool buttonReleased = false; 
+volatile bool outputEnabled = false; 
+uint8_t fifoBuffer[BUFFER_SIZE];
 
-Quaternion q;           // [w, x, y, z]
-VectorFloat gravity;     // [x, y, z]
 
-bool isBroadcasting = false;
-bool isButtonPressed = false;
-//can be removed using capacitor connected parallel to button
-uint32_t buttonTimer = 0;
+unsigned long lastDebounceTime = 0; //just becouse i didn't have capacitor on button
 
 void setup() {
-    Serial.begin(115200);
-    pinMode(BUTTON_PIN, INPUT_PULLUP);
-    Wire.begin();
-    mpu.initialize();
-    devStatus = mpu.dmpInitialize();
-    
-    if (devStatus == 0) {
-        mpu.setDMPEnabled(true);
-        dmpReady = true;
-        packetSize = mpu.dmpGetFIFOPacketSize();
+  Serial.begin(SERIAL_SPEED);
+  Wire.begin();
+  
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonISR, CHANGE);
+
+  mpu.initialize();
+  mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+  Serial.print("Current accel range: ±");
+  Serial.print(2 << mpu.getFullScaleAccelRange());
+  Serial.println("g");
+
+  mpu.dmpInitialize();
+  mpu.setDMPEnabled(true);
+  attachInterrupt(0, dmpReady, RISING);
+  #if ENABLE_CALIBRATION
+  mpu.CalibrateAccel(30);
+  Serial.print("\nAccel calibration complete.\nAccel offsets: ");
+  Serial.print(mpu.getXAccelOffset()); Serial.print(", ");
+  Serial.print(mpu.getYAccelOffset()); Serial.print(", ");
+  Serial.println(mpu.getZAccelOffset());
+
+  mpu.CalibrateGyro(30);
+  Serial.print("\nGyro calibration complete.\nGyro offsets: ");
+  Serial.print(mpu.getXGyroOffset()); Serial.print(", ");
+  Serial.print(mpu.getYGyroOffset()); Serial.print(", ");
+  Serial.println(mpu.getZGyroOffset());
+  #endif
+}
+
+void dmpReady() {
+  mpuFlag = true;
+}
+
+void buttonISR() {
+  if ( (millis() - lastDebounceTime) > DEBOUNCE_DELAY) {
+    if (digitalRead(BUTTON_PIN)) {
+      buttonReleased = true;
+    } else {
+      buttonPressed = true; 
     }
-    buttonTimer = millis();
-    //mpu.CalibrateGyro(15);
-    //mpu.CalibrateAccel(15);
-    //Serial.println("\nCallibration complete");
+  }
+  lastDebounceTime = millis();
 }
 
 void loop() {
-    #pragma region Button_handler
-    bool buttonStatus = !digitalRead(BUTTON_PIN);
-    if (buttonStatus && !isButtonPressed && millis() - buttonTimer > BUTTON_TIMER_AMOUNT){
-      isButtonPressed = true;
-      buttonTimer = millis();
-    }
-    if (!buttonStatus && isButtonPressed && millis() - buttonTimer > BUTTON_TIMER_AMOUNT){
-      isButtonPressed = false;
-      buttonTimer = millis();
-      
-      isBroadcasting = !isBroadcasting;
-      //i think we need a delay here cos use need some time to get his finger of the button
-      if (isBroadcasting){
-        Serial.println("Start recording");
-        return;
-      }
-      else {
-        Serial.println("Stop recording");
-        delay(BUTTON_TIMER_AMOUNT);
-        return;
-      }
-    }
 
-    #pragma endringon Button_handler
-
+  #pragma region button
+  if (buttonReleased) {
+    buttonReleased = false;
+    buttonPressed = false;
+    outputEnabled = !outputEnabled;
+    if (outputEnabled) {
+      Serial.println("Start recording");
+    } else {
+      Serial.println("Stop recording");
+    }
+  }
+  #pragma endregion
+  
+  if (outputEnabled && mpuFlag && mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) {
+    Quaternion q;
+    VectorFloat gravity;
+    VectorInt16 aa;
+    float ypr[3];
     
-    if (!isBroadcasting || !dmpReady) return;
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+    mpu.dmpGetAccel(&aa, fifoBuffer);
     
-    // Оптимизированное чтение FIFO
-    if (mpu.getIntStatus() & 0x02) {
-        mpu.getFIFOBytes(fifoBuffer, packetSize);
-        
-        mpu.dmpGetQuaternion(&q, fifoBuffer);
-        mpu.dmpGetGravity(&gravity, &q);
+    mpuFlag = false;
+    
+    Serial.print(q.w);                Serial.print(',');
+    Serial.print(q.x);                Serial.print(',');
+    Serial.print(q.y);                Serial.print(',');
+    Serial.print(q.z);                Serial.print(',');
 
-        // Прямое чтение сырых данных без промежуточных переменных
-        Serial.print(q.w, 4); Serial.print(',');
-        Serial.print(q.x, 4); Serial.print(',');
-        Serial.print(q.y, 4); Serial.print(',');
-        Serial.print(q.z, 4); Serial.print(',');
-        
-        int16_t ax, ay, az;
-        mpu.getAcceleration(&ax, &ay, &az);
-        Serial.print(ax / ACCEL_CONST, 4); Serial.print(',');
-        Serial.print(ay / ACCEL_CONST, 4); Serial.print(',');
-        Serial.println(az / ACCEL_CONST, 4);
-    }
+    Serial.print(aa.x / ACCEL_SCALE); Serial.print(',');
+    Serial.print(aa.y / ACCEL_SCALE); Serial.print(',');
+    Serial.print(aa.z / ACCEL_SCALE); Serial.println();
+
+  }
 }

@@ -8,8 +8,8 @@ This code assume that u will use standart mpu 6050 connection:
 + GND -> GND
 + SCL -> SCL (A5; Arduino Nano pinout)
 + SDA -> SDA (A4; Arduino Nano pinout)
-
-Also code utilize button on ~D3 pin, u can change it in code by changing BUTTON_PIN define
++ INT -> INT0 (D2; Arduino Nano pinout)
+Also code utilize button on INT1 (D3) pin, u can change it in code by changing BUTTON_PIN define
 
 
 --- 
@@ -23,5 +23,6 @@ Also code utilize button on ~D3 pin, u can change it in code by changing BUTTON_
 + GND -> GND
 + SCL -> SCL (A5; Arduino Nano распиновка)
 + SDA -> SDA (A4; Arduino Nano распиновка)
++ INT -> INT0 (D2; Arduino Nano распиновка)
 
 Так же в нём есть кнопка, но её пин можно переопределить через BUTTON_PIN

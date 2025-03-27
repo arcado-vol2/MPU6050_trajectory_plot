@@ -75,21 +75,67 @@ namespace COM {
     std::string Port::Read() {
         if (!isOpen) return "";
 
-        char buffer[256];
-        DWORD bytesRead;
+        static std::vector<char> buffer(4096);
+        static size_t buffer_pos = 0;
+
+        COMSTAT comStat;
         DWORD errors;
-        COMSTAT status;
-
-        ClearCommError(hSerial, &errors, &status);
-        if (status.cbInQue > 0) {
-            DWORD toRead = min(sizeof(buffer) - 1, status.cbInQue);
-
-            if (ReadFile(hSerial, buffer, toRead, &bytesRead, NULL) && bytesRead > 0) {
-                buffer[bytesRead] = '\0';
-                return std::string(buffer);
-            }
+        if (!ClearCommError(hSerial, &errors, &comStat) || comStat.cbInQue == 0) {
+            return "";
         }
-        return "";
+
+        // Читаем все доступные данные
+        DWORD bytes_to_read = comStat.cbInQue;
+
+        // Убедимся, что есть место для новых данных и нуль-терминатора
+        if (bytes_to_read > buffer.size() - buffer_pos - 1) {  // -1 для нуль-терминатора
+            buffer.resize(buffer_pos + bytes_to_read + 1);  // +1 для нуль-терминатора
+        }
+
+        DWORD bytes_read = 0;
+        if (!ReadFile(hSerial, buffer.data() + buffer_pos, bytes_to_read, &bytes_read, nullptr) || bytes_read == 0) {
+            return "";
+        }
+
+        buffer_pos += bytes_read;
+
+        // Проверяем, что buffer_pos в пределах вектора перед добавлением терминатора
+        if (buffer_pos >= buffer.size()) {
+            buffer.push_back('\0');
+        }
+        else {
+            buffer[buffer_pos] = '\0';
+        }
+
+        // Ищем символ новой строки ('\n') — признак конца строки
+        char* line_end = strchr(buffer.data(), '\n');
+        if (!line_end) {
+            return "";  // Полная строка ещё не пришла
+        }
+
+        // Вырезаем строку (исключая '\n')
+        std::string line(buffer.data(), line_end);
+
+        // Сдвигаем оставшиеся данные в начало буфера
+        size_t remaining_data = buffer_pos - (line_end - buffer.data() + 1);
+        if (remaining_data > 0) {
+            memmove(buffer.data(), line_end + 1, remaining_data);
+        }
+        else {
+            // Если данных не осталось, просто сбрасываем позицию
+            remaining_data = 0;
+        }
+        buffer_pos = remaining_data;
+
+        // Добавляем нуль-терминатор для оставшихся данных
+        if (buffer_pos < buffer.size()) {
+            buffer[buffer_pos] = '\0';
+        }
+        else if (!buffer.empty()) {
+            buffer.back() = '\0';
+        }
+
+        return line;
     }
 
     const std::string& Port::GetName() const {
