@@ -6,7 +6,7 @@
 
 class PlayScene : public Scene {
 public:
-	PlayScene(COM::Port& comPort) : Scene(comPort) {}
+	PlayScene(COM::Port* comPort) : Scene(comPort) {}
 	void Render() override;
 	void Update() override;
 	void RenderUI() override;

@@ -6,7 +6,7 @@
 
 class RealtimeScene : public Scene {
 public:
-	RealtimeScene(COM::Port& comPort) : Scene(comPort) {}
+	RealtimeScene(COM::Port* comPort) : Scene(comPort) {}
 	void Render() override;
 	void Update() override;
 	void RenderUI() override;

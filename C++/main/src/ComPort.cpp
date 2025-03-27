@@ -14,10 +14,14 @@ namespace COM {
         : portName(port), portSpeed(speed), hSerial(INVALID_HANDLE_VALUE), isOpen(false) {}
 
     Port::~Port() {
-        close();
+        Close();
     }
 
-    bool Port::open() {
+    bool Port::IsOpen() {
+        return isOpen;
+    }
+
+    bool Port::Open() {
         std::string fullPortName = "\\\\.\\" + portName;
         std::wstring widePortName(fullPortName.begin(), fullPortName.end());
 
@@ -64,10 +68,11 @@ namespace COM {
         }
 
         isOpen = true;
+        std::cout << "COM port " << portName << " opens sucesessfuly!" << std::endl;
         return true;
     }
 
-    std::string Port::read() {
+    std::string Port::Read() {
         if (!isOpen) return "";
 
         char buffer[256];
@@ -87,7 +92,7 @@ namespace COM {
         return "";
     }
 
-    const std::string& Port::getName() const {
+    const std::string& Port::GetName() const {
         return portName;
     }
 
@@ -119,14 +124,12 @@ namespace COM {
         return comPorts;
     }
 
-    void Port::close() {
+    void Port::Close() {
         if (isOpen) {
             PurgeComm(hSerial, PURGE_RXABORT | PURGE_RXCLEAR | PURGE_TXABORT | PURGE_TXCLEAR);
-
             CloseHandle(hSerial);
             hSerial = INVALID_HANDLE_VALUE;
             isOpen = false;
-
             std::cout << "Port " << portName << " closed successfully." << std::endl;
         }
     }

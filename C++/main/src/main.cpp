@@ -24,13 +24,19 @@
 #include "RealtimeScene.h"
 
 
-COM::Port currentPort;
+std::unique_ptr<COM::Port> currentPort;
 std::vector<std::string> comPorts;
 int selectedPortIndex = -1;
 
 void SetupCurrentPort(const std::string& name){
-    currentPort.close();
-    currentPort = COM::Port(name, CBR_115200);
+    if (currentPort) {
+        currentPort->Close();
+    }
+    currentPort = std::make_unique<COM::Port>(name, CBR_115200);
+    if (!currentPort->Open()) {
+        currentPort.reset(); 
+        selectedPortIndex = -1;
+    }
 }
 
 void UpdateAvailablePorts() {
@@ -45,13 +51,14 @@ static void error_callback(int error, const char* description)
 
 std::unique_ptr<Scene> CreateScene(SceneType type) {
     switch (type) {
-    case SceneType::NORENDER: return std::make_unique<NoRenderScene>(currentPort);
-    case SceneType::RECORD: return std::make_unique<RecordScene>(currentPort);
-    case SceneType::PLAY: return std::make_unique<PlayScene>(currentPort);
-    case SceneType::REALTIME: return std::make_unique<RealtimeScene>(currentPort);
+    case SceneType::NORENDER: return std::make_unique<NoRenderScene>(currentPort.get());
+    case SceneType::RECORD: return std::make_unique<RecordScene>(currentPort.get());
+    case SceneType::PLAY: return std::make_unique<PlayScene>(currentPort.get());
+    case SceneType::REALTIME: return std::make_unique<RealtimeScene>(currentPort.get());
     default: return nullptr;
     }
 }
+
 
 int main(void)
 {
@@ -156,7 +163,8 @@ int main(void)
         int currentSceneIndex = static_cast<int>(currentSceneType);
         if (ImGui::Combo("Scene", &currentSceneIndex, sceneItems, IM_ARRAYSIZE(sceneItems)))
         {
-            currentPort.close();
+            if (currentPort->IsOpen())
+                currentPort->Close();
             SceneType newSceneType = static_cast<SceneType>(currentSceneIndex);
             if (newSceneType != currentSceneType) {
                 currentSceneType = newSceneType;

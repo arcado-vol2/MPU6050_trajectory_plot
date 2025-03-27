@@ -4,7 +4,7 @@
 #include "PlayScene.h"
 #include "RealtimeScene.h"
 
-std::unique_ptr<Scene> CreateScene(const std::string& sceneName, COM::Port& comPort) {
+std::unique_ptr<Scene> CreateScene(const std::string& sceneName, COM::Port* comPort) {
     if (sceneName == "NoRender") return std::make_unique<NoRenderScene>(comPort);
     if (sceneName == "Record") return std::make_unique<RecordScene>(comPort);
     if (sceneName == "Play") return std::make_unique<PlayScene>(comPort);
@@ -12,7 +12,7 @@ std::unique_ptr<Scene> CreateScene(const std::string& sceneName, COM::Port& comP
     return nullptr;
 }
 
-std::unique_ptr<Scene> CreateScene(SceneType type, COM::Port& comPort) {
+std::unique_ptr<Scene> CreateScene(SceneType type, COM::Port* comPort) {
     switch (type) {
     case SceneType::NORENDER: return std::make_unique<NoRenderScene>(comPort);
     case SceneType::RECORD: return std::make_unique<RecordScene>(comPort);

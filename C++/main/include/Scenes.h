@@ -10,7 +10,7 @@ class RecordScene;
 class PlayScene;
 class RealTimeScene;
 
-std::unique_ptr<Scene> CreateScene(const std::string& sceneName, COM::Port& comPort);
+std::unique_ptr<Scene> CreateScene(const std::string& sceneName, COM::Port* comPort);  // ”казатель
 
 enum class SceneType {
     NORENDER,
@@ -18,5 +18,7 @@ enum class SceneType {
     PLAY,
     REALTIME,
 };
+
+std::unique_ptr<Scene> CreateScene(SceneType type, COM::Port* comPort);  // ”казатель
 
 #endif // SCENES_H

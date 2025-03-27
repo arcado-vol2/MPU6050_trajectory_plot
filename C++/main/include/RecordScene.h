@@ -10,7 +10,7 @@
 
 class RecordScene : public Scene {
 public:
-	RecordScene(COM::Port& comPort);
+    RecordScene(COM::Port* comPort);
 	~RecordScene() override;
 
 	void Render() override;

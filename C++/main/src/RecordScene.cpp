@@ -15,7 +15,7 @@
 #include <chrono>
 #include <iomanip>
 
-RecordScene::RecordScene(COM::Port& comPort) : Scene(comPort) {
+RecordScene::RecordScene(COM::Port* comPort) : Scene(comPort) {
     vertexShaderSource = "#version 330 core\n"
         "layout (location = 0) in vec3 aPos;\n"
         "layout (location = 1) in vec3 aColor;\n"
@@ -46,7 +46,12 @@ RecordScene::RecordScene(COM::Port& comPort) : Scene(comPort) {
     // Инициализация кватерниона (w, x, y, z)
     q = { 1.0f, 0.0f, 0.0f, 0.0f };
 
-    r_comPort.open();
+    if (p_comPort && p_comPort->IsOpen()) {  // Проверка указателя и состояния порта
+        // Пор уже открыт, ничего не делаем
+    }
+    else if (p_comPort) {
+        p_comPort->Open();  // Открываем порт, если он не открыт
+    };
 }
 
 RecordScene::~RecordScene() {
@@ -132,9 +137,14 @@ void RecordScene::StopRecording() {
 }
 
 void RecordScene::Update() {
-    // Чтение данных из COM порта
+    if (!p_comPort || !p_comPort->IsOpen()) {
+        std::cerr << "COM port obj not exist or port not open";
+        return;  // Проверка указателя и состояния
+    }
 
-    std::string data = r_comPort.read();
+    std::string data = p_comPort->Read();  // Доступ через указатель
+    std::cout << data << std::endl;
+
     data.erase(std::remove(data.begin(), data.end(), '\r'), data.end());
     data.erase(std::remove(data.begin(), data.end(), '\n'), data.end());
     trim(data);

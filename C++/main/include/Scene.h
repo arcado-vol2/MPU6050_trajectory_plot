@@ -2,23 +2,20 @@
 #ifndef SCENE_H
 #define SCENE_H
 
-
 #include "ComPort.h"
+
 class Scene {
 public:
-	Scene(COM::Port& comPort) : r_comPort(comPort) {}
+    Scene(COM::Port* comPort) : p_comPort(comPort) {}  // Изменили на указатель
 
-	virtual ~Scene() = default;
-	virtual void InitRender() = 0;
-	virtual void Render() = 0;
-	virtual void Update() = 0;
-	virtual void RenderUI() = 0;
-	
+    virtual ~Scene() = default;
+    virtual void InitRender() = 0;
+    virtual void Render() = 0;
+    virtual void Update() = 0;
+    virtual void RenderUI() = 0;
+
 public:
-	COM::Port& r_comPort;
-	
+    COM::Port* p_comPort;  // Изменили на указатель
 };
-
-
 
 #endif // SCENE_H

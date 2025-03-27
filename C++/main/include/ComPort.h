@@ -42,22 +42,24 @@ namespace COM {
         * @brief opens port
         * @return success of opening 
         */
-        bool open();
+        bool Open();
         /**
         * @brief read value from port
         * @return read result
         */
-        std::string read();
+        std::string Read();
         /**
         * @brief name of port
         * @return name of port
         */
-        const std::string& getName() const;
+        const std::string& GetName() const;
 
         /**
         * @brief release com device
         */
-        void close();
+        void Close();
+
+        bool IsOpen();
         
     };
 

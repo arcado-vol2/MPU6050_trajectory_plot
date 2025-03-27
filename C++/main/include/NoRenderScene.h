@@ -6,7 +6,7 @@
 
 class NoRenderScene : public Scene {
 public:
-	NoRenderScene(COM::Port& comPort) : Scene(comPort) {}
+	NoRenderScene(COM::Port* comPort) : Scene(comPort) {}
 	void Render() override;
 	void Update() override;
 	void RenderUI() override;
