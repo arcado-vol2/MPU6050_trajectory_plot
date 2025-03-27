@@ -32,7 +32,7 @@ void SetupCurrentPort(const std::string& name){
     if (currentPort) {
         currentPort->Close();
     }
-    currentPort = std::make_unique<COM::Port>(name, 230400);
+    currentPort = std::make_unique<COM::Port>(name, 115200);
     if (!currentPort->Open()) {
         currentPort.reset(); 
         selectedPortIndex = -1;

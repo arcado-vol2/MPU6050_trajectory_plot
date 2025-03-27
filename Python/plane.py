@@ -9,7 +9,7 @@ import csv
 from datetime import datetime
 import os
 
-ser = serial.Serial('COM5', 115200, timeout=0.001)
+ser = serial.Serial('COM5', 230400, timeout=0.001)
 ser.flushInput()
 
 # Параметры платы
@@ -46,7 +46,7 @@ def init_csv():
     
     csv_file = open(filename, mode='w', newline='')
     csv_writer = csv.writer(csv_file)
-    csv_writer.writerow(['Timestamp', 'Q_w', 'Q_x', 'Q_y', 'Q_z'])
+    csv_writer.writerow(['t', 'w', 'x', 'y', 'z', 'ax', 'ay', 'az'])
     print(f"Создан новый файл для записи: {filename}")
 
 def init_gl():
@@ -109,7 +109,7 @@ def read_serial():
                 continue
                 
             # Если идет запись и строка содержит данные кватерниона
-            print(line, line.count(','))
+            print(line)
             if is_recording and line.count(',') == 6:
                 try:
                     data = list(map(float, line.split(',')))
@@ -118,8 +118,8 @@ def read_serial():
                         q = np.array(data[:4])  # Только кватернион
                         
                         if csv_writer is not None:
-                            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                            csv_writer.writerow([timestamp] + data[:4])  # Записываем только кватернион
+                            timestamp = datetime.now().strftime('%H:%M:%S.%f')
+                            csv_writer.writerow([timestamp] + data)  # Записываем только кватернион
                             csv_file.flush()
                 except ValueError as e:
                     print(f"Ошибка преобразования данных: {e}")

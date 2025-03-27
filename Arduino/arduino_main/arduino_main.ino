@@ -3,7 +3,7 @@
 #define BUTTON_PIN 3
 #define DEBOUNCE_DELAY 50
 #define BUFFER_SIZE 45
-#define SERIAL_SPEED 115200
+#define SERIAL_SPEED 230400
 #define ENABLE_CALIBRATION 1
 #define ACCEL_SCALE 8192.0
 
@@ -18,8 +18,23 @@ uint8_t fifoBuffer[BUFFER_SIZE];
 
 unsigned long lastDebounceTime = 0; //just becouse i didn't have capacitor on button
 
+
+
 void setup() {
+  
+  bool allowCalibration;
+
+  if(digitalRead(8) == HIGH){
+    digitalWrite(A1, HIGH);
+    allowCalibration = true;
+  }
+  else{
+    digitalWrite(A1, LOW);
+    allowCalibration = false;
+  }
+
   Serial.begin(SERIAL_SPEED);
+
   Wire.begin();
   
   pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -34,18 +49,24 @@ void setup() {
   mpu.dmpInitialize();
   mpu.setDMPEnabled(true);
   attachInterrupt(0, dmpReady, RISING);
-  #if ENABLE_CALIBRATION
-  mpu.CalibrateAccel(30);
-  Serial.print("\nAccel calibration complete.\nAccel offsets: ");
-  Serial.print(mpu.getXAccelOffset()); Serial.print(", ");
-  Serial.print(mpu.getYAccelOffset()); Serial.print(", ");
-  Serial.println(mpu.getZAccelOffset());
 
-  mpu.CalibrateGyro(30);
-  Serial.print("\nGyro calibration complete.\nGyro offsets: ");
-  Serial.print(mpu.getXGyroOffset()); Serial.print(", ");
-  Serial.print(mpu.getYGyroOffset()); Serial.print(", ");
-  Serial.println(mpu.getZGyroOffset());
+  
+  #if ENABLE_CALIBRATION
+
+  if (allowCalibration){
+    mpu.CalibrateAccel(30);
+    Serial.print("\nAccel calibration complete.\nAccel offsets: ");
+    Serial.print(mpu.getXAccelOffset()); Serial.print(", ");
+    Serial.print(mpu.getYAccelOffset()); Serial.print(", ");
+    Serial.println(mpu.getZAccelOffset());
+
+    mpu.CalibrateGyro(30);
+    Serial.print("\nGyro calibration complete.\nGyro offsets: ");
+    Serial.print(mpu.getXGyroOffset()); Serial.print(", ");
+    Serial.print(mpu.getYGyroOffset()); Serial.print(", ");
+    Serial.println(mpu.getZGyroOffset());
+    digitalWrite(A1, LOW);
+  }
   #endif
 }
 
