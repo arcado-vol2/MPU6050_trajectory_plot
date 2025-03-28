@@ -16,6 +16,7 @@
 #include <iostream>
 #include <memory>
 #include <vector>
+#include <chrono>
 
 #include "Scene.h"
 #include "NoRenderScene.h"
@@ -23,6 +24,10 @@
 #include "PlayScene.h"
 #include "RealtimeScene.h"
 
+
+#define TARGET_FPS 60
+
+const double TARGET_FRAME_TIME = 1.0 / TARGET_FPS;
 
 std::unique_ptr<COM::Port> currentPort;
 std::vector<std::string> comPorts;
@@ -128,6 +133,7 @@ int main(void)
 
     while (!glfwWindowShouldClose(window))
     {
+        auto frameStart = std::chrono::high_resolution_clock::now();
         int width = 0, height = 0;
         glfwGetFramebufferSize(window, &width, &height);
        
@@ -135,12 +141,13 @@ int main(void)
         glClear(GL_COLOR_BUFFER_BIT);
 
         if (currentScene) {
+            currentScene->Update();
             currentScene->Render();
         }
 
         auto updateFuture = std::async(std::launch::async, [&]() {
             if (currentScene) {
-                currentScene->Update();
+                
             }
         }
         );
@@ -230,6 +237,15 @@ int main(void)
 
         glfwSwapBuffers(window);
         glfwPollEvents();
+
+
+        auto frameEnd = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> frameDuration = frameEnd - frameStart;
+        double elapsedTime = frameDuration.count();
+
+        if (elapsedTime < TARGET_FRAME_TIME) {
+            std::this_thread::sleep_for(std::chrono::duration<double>(TARGET_FRAME_TIME - elapsedTime));
+        }
     }
 
     glfwDestroyWindow(window);

@@ -22,9 +22,15 @@ namespace COM {
 
     private:
         HANDLE hSerial;
+        COMSTAT status;
+        DWORD errors;
+        bool isOpen;
+
         std::string portName;
         int portSpeed;
-        bool isOpen;
+        
+        
+
 
     public:
         /*
@@ -60,6 +66,8 @@ namespace COM {
         void Close();
 
         bool IsOpen();
+
+        int BytesAvailable();
         
     };
 

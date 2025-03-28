@@ -3,8 +3,8 @@
 #define BUTTON_PIN 3
 #define DEBOUNCE_DELAY 50
 #define BUFFER_SIZE 45
-#define SERIAL_SPEED 230400
-#define ENABLE_CALIBRATION 1
+#define SERIAL_SPEED 115200
+#define ENABLE_CALIBRATION 0
 #define ACCEL_SCALE 8192.0
 
 
@@ -24,7 +24,7 @@ void setup() {
   
   bool allowCalibration;
 
-  if(digitalRead(8) == HIGH){
+  if(digitalRead(8) == LOW){
     digitalWrite(A1, HIGH);
     allowCalibration = true;
   }
@@ -42,9 +42,9 @@ void setup() {
 
   mpu.initialize();
   mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
-  Serial.print("Current accel range: ±");
-  Serial.print(2 << mpu.getFullScaleAccelRange());
-  Serial.println("g");
+  //Serial.print("Current accel range: ±");
+  //Serial.print(2 << mpu.getFullScaleAccelRange());
+  //Serial.println("g");
 
   mpu.dmpInitialize();
   mpu.setDMPEnabled(true);
@@ -93,9 +93,9 @@ void loop() {
     buttonPressed = false;
     outputEnabled = !outputEnabled;
     if (outputEnabled) {
-      Serial.println("Start recording");
+      Serial.println("1");
     } else {
-      Serial.println("Stop recording");
+      Serial.println("0");
     }
   }
   #pragma endregion

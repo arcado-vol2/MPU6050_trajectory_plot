@@ -25,7 +25,7 @@ private:
     void SetupCamera();
     std::string GenerateCSVFIlePath();
     void StartNewRecording();
-    void WriteQToCSV();
+    void WriteToCSV();
     void StopRecording();
 
     std::ofstream csvFile;
@@ -33,26 +33,24 @@ private:
     std::string savePath = "";
     bool isRecording = false;
 
-    // Шейдерные программы и буферы
+    //OpenGL stuff
     unsigned int shaderProgram;
     unsigned int boardVAO, boardVBO;
     unsigned int axesVAO, axesVBO;
     const char* vertexShaderSource;
     const char* fragmentShaderSource;
 
-    // Матрицы для преобразований
     glm::mat4 view;
     glm::mat4 projection;
 
-    // Параметры платы и осей
     float BOARD_WIDTH;
     float BOARD_HEIGHT;
     float BOARD_THICKNESS;
     float AXIS_LENGTH;
 
-    // Кватернион для ориентации (w, x, y, z)
-    std::array<float, 4> q;
-    std::array<float, 3> a;
+    //data stuff
+    std::vector<float> q;
+    std::vector<float> a;
 
 
 };
