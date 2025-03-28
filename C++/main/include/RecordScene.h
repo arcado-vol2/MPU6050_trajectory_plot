@@ -24,14 +24,20 @@ private:
     void InitAxes();
     void SetupCamera();
     std::string GenerateCSVFIlePath();
-    void StartNewRecording();
+    bool StartNewRecording();
     void WriteToCSV();
     void StopRecording();
+    void ShowPopUp(const std::string& label, const std::string& message);
+
 
     std::ofstream csvFile;
     std::string csvFilePath;
     std::string savePath = "";
     bool isRecording = false;
+
+    bool isPopUpShowing = false;
+    std::string popUpMessage;
+    std::string popUpLabel;
 
     //OpenGL stuff
     unsigned int shaderProgram;

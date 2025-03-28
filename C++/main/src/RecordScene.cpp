@@ -90,7 +90,7 @@ std::string RecordScene::GenerateCSVFIlePath() {
     return savePath + "/recording_" + oss.str() + ".csv";
 }
 
-void RecordScene::StartNewRecording() {
+bool RecordScene::StartNewRecording() {
     if (csvFile.is_open()) {
         csvFile.close();
     }
@@ -100,9 +100,12 @@ void RecordScene::StartNewRecording() {
     csvFile.open(csvFilePath);
     if (csvFile.is_open()) {
         csvFile << "t,w,x,y,z,ax,ay,az\n";
+        return true;
     }
     else {
+        ShowPopUp("Error", "Path for recording file not assigned!\n\nDon't forget to stop translation.");
         std::cerr << "error due file creating " << csvFilePath << std::endl;
+        return false;
     }
 }
 
@@ -134,6 +137,11 @@ void RecordScene::StopRecording() {
 }
 
 
+void RecordScene::ShowPopUp(const std::string& label, const std::string& message) {
+    popUpMessage = message;
+    popUpLabel = label;
+    isPopUpShowing = true;
+}
 
 
 void RecordScene::Update() {
@@ -148,14 +156,14 @@ void RecordScene::Update() {
             if (line.length() == 2) {
                 //Start translation code
                 if (line[0] == '1') {
-                    isRecording = true;
-                    StartNewRecording();
+                    isRecording = StartNewRecording();
                     continue;
                 }
                 //End translation code
                 else if (line[0] == '0') {
                     isRecording = false;
                     StopRecording();
+                    ShowPopUp("Success", "File was succesfully saved!");
                     continue;
                 }
             }
@@ -246,6 +254,24 @@ void RecordScene::RenderUI() {
     ImGui::Text("Accel values:");
     ImGui::Text("x: %.3f, y: %.3f, z: %.3f", a[0], a[1], a[2]);
     ImGui::End();
+
+    if (isPopUpShowing) {
+        ImGui::OpenPopup(popUpLabel.c_str());
+        if (ImGui::BeginPopupModal(popUpLabel.c_str(), &isPopUpShowing, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text(popUpLabel.c_str());
+            ImGui::TextWrapped("%s", popUpMessage.c_str());
+            ImGui::Separator();
+
+            if (ImGui::Button("OK", ImVec2(120, 0))) {
+                ImGui::CloseCurrentPopup();
+                isPopUpShowing = false;
+            }
+
+            ImGui::EndPopup();
+        }
+    }
+
+
 }
 
 void RecordScene::InitBoard() {
