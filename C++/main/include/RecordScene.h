@@ -1,12 +1,13 @@
 #pragma once
 #ifndef RECORDSCENE_H
-#define RECORDCENE_H
+#define RECORDSCENE_H
 
 #include "Scenes.h"
 #include <array>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <fstream>
+#include "UIStuff.h"
 
 class RecordScene : public Scene {
 public:
@@ -27,7 +28,7 @@ private:
     bool StartNewRecording();
     void WriteToCSV();
     void StopRecording();
-    void ShowPopUp(const std::string& label, const std::string& message);
+    
 
 
     std::ofstream csvFile;
@@ -35,9 +36,7 @@ private:
     std::string savePath = "";
     bool isRecording = false;
 
-    bool isPopUpShowing = false;
-    std::string popUpMessage;
-    std::string popUpLabel;
+    
 
     //OpenGL stuff
     unsigned int shaderProgram;
@@ -58,7 +57,7 @@ private:
     std::vector<float> q;
     std::vector<float> a;
 
-
+    UIStuff::PopUp popUp;
 };
 
 #endif // RECORDSCENE_H

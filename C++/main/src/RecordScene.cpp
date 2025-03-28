@@ -7,7 +7,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include "FileDialog.h"
+#include "UIStuff.h"
 #include <csv.h>
 #include <ctime>
 #include <iomanip>
@@ -55,6 +55,8 @@ RecordScene::RecordScene(COM::Port* comPort) : Scene(comPort) {
             p_comPort->Open();
         }
     }
+
+    popUp = UIStuff::PopUp();
 }
 
 RecordScene::~RecordScene() {
@@ -103,7 +105,7 @@ bool RecordScene::StartNewRecording() {
         return true;
     }
     else {
-        ShowPopUp("Error", "Path for recording file not assigned!\n\nDon't forget to stop translation.");
+        popUp.ShowPopUp("Error", "Path for recording file not assigned!\n\nDon't forget to stop translation.");
         std::cerr << "error due file creating " << csvFilePath << std::endl;
         return false;
     }
@@ -137,11 +139,6 @@ void RecordScene::StopRecording() {
 }
 
 
-void RecordScene::ShowPopUp(const std::string& label, const std::string& message) {
-    popUpMessage = message;
-    popUpLabel = label;
-    isPopUpShowing = true;
-}
 
 
 void RecordScene::Update() {
@@ -163,7 +160,7 @@ void RecordScene::Update() {
                 else if (line[0] == '0') {
                     isRecording = false;
                     StopRecording();
-                    ShowPopUp("Success", "File was succesfully saved!");
+                    popUp.ShowPopUp("Success", "File was succesfully saved!");
                     continue;
                 }
             }
@@ -241,7 +238,8 @@ void RecordScene::RenderUI() {
 
     ImGui::Separator();
     if (ImGui::Button("Choose save path")) {
-        savePath = OpenFolderDialog();
+
+        savePath = UIStuff::OpenFolderDialog();
     }
     ImGui::Text("Selected path:");
     ImGui::SameLine();
@@ -255,21 +253,7 @@ void RecordScene::RenderUI() {
     ImGui::Text("x: %.3f, y: %.3f, z: %.3f", a[0], a[1], a[2]);
     ImGui::End();
 
-    if (isPopUpShowing) {
-        ImGui::OpenPopup(popUpLabel.c_str());
-        if (ImGui::BeginPopupModal(popUpLabel.c_str(), &isPopUpShowing, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text(popUpLabel.c_str());
-            ImGui::TextWrapped("%s", popUpMessage.c_str());
-            ImGui::Separator();
-
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
-                ImGui::CloseCurrentPopup();
-                isPopUpShowing = false;
-            }
-
-            ImGui::EndPopup();
-        }
-    }
+    popUp.RenderPopUp();
 
 
 }

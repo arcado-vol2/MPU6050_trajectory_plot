@@ -70,7 +70,7 @@ else()
 
 endif()
 
-target_sources("${CMAKE_PROJECT_NAME}" PRIVATE ${MY_SOURCES}  "include/ComPort.h" "src/ComPort.cpp" "include/Scene.h" "include/Scenes.h" "include/NoRenderScene.h" "include/RecordScene.h" "include/PlayScene.h" "include/RealtimeScene.h" "src/Scenes.cpp" "src/NoRenderScene.cpp" "src/RealtimeScene.cpp" "src/PlayScene.cpp" "src/RecordScene.cpp" "include/FileDialog.h" "src/FileDialog.cpp")
+target_sources("${CMAKE_PROJECT_NAME}" PRIVATE ${MY_SOURCES}  "include/ComPort.h" "src/ComPort.cpp" "include/Scene.h" "include/Scenes.h" "include/NoRenderScene.h" "include/RecordScene.h" "include/PlayScene.h" "include/RealtimeScene.h" "src/Scenes.cpp" "src/NoRenderScene.cpp" "src/RealtimeScene.cpp" "src/PlayScene.cpp" "src/RecordScene.cpp" "include/UIStuff.h" "src/UIStuff.cpp")
 
 
 if(MSVC) # If using the VS compiler...
