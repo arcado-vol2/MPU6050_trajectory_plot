@@ -145,13 +145,6 @@ int main(void)
             currentScene->Render();
         }
 
-        auto updateFuture = std::async(std::launch::async, [&]() {
-            if (currentScene) {
-                
-            }
-        }
-        );
-
 #pragma region imgui
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -161,8 +154,7 @@ int main(void)
 
         if (currentScene) {
             currentScene->RenderUI();
-        }
-        updateFuture.wait();
+        }   
 
 #pragma region imgui_general
         ImGui::Begin("Main control");

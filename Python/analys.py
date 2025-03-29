@@ -5,12 +5,60 @@ from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d import Axes3D
 from pyquaternion import Quaternion  # Установите через pip install pyquaternion
 
+def parse_time(time_str):
+    """Parse time string in HOURS:MINUTES:SECONDS.MICROSECONDS format"""
+    try:
+        # Разделяем на части до и после точки
+        if '.' in time_str:
+            time_part, micro_part = time_str.split('.')
+            microseconds = float('0.' + micro_part)
+        else:
+            time_part = time_str
+            microseconds = 0.0
+        
+        # Разбираем основную часть времени
+        time_components = list(map(float, time_part.split(':')))
+        
+        # Добавляем нули если компонентов меньше 3 (например, только секунды)
+        while len(time_components) < 3:
+            time_components.insert(0, 0.0)
+            
+        hours, minutes, seconds = time_components[:3]
+        
+        total_seconds = hours * 3600 + minutes * 60 + seconds + microseconds
+        return total_seconds
+    except Exception as e:
+        print(f"Error parsing time string '{time_str}': {e}")
+        return 0.0
+
 def load_data(filename):
-    """Загрузка данных из файла: q0,q1,q2,q3,accX,accY,accZ"""
-    data = np.loadtxt(filename, delimiter=',')
-    quaternions = data[:, :4]  # Колонки 0-3: кватернион [w, x, y, z]
-    acc = data[:, 4:7]         # Колонки 4-6: акселерометр [X, Y, Z]
-    return quaternions, acc
+    """Загрузка данных из файла: время, q0,q1,q2,q3,accX,accY,accZ"""
+    with open(filename) as f:
+        lines = f.readlines()
+    
+    # Пропускаем заголовок если есть
+    if not lines[0][0].isdigit():
+        lines = lines[1:]
+    
+    data = []
+    for line in lines:
+        parts = line.strip().split(',')
+        time_str = parts[0]
+        quat_acc = list(map(float, parts[1:8]))
+        timestamp = parse_time(time_str)
+        data.append([timestamp] + quat_acc)
+    
+    data = np.array(data)
+    timestamps = data[:, 0]
+    quaternions = data[:, 1:5]  # Колонки 1-4: кватернион [w, x, y, z]
+    acc = data[:, 5:8]         # Колонки 5-7: акселерометр [X, Y, Z]
+    
+    # Вычисляем дельты времени между измерениями
+    time_deltas = np.diff(timestamps)
+    # Первый delta - среднее последующих (так как diff дает на 1 элемент меньше)
+    time_deltas = np.insert(time_deltas, 0, np.mean(time_deltas))
+    
+    return quaternions, acc, time_deltas
 
 def quaternion_to_rotation_matrix(q):
     """Конвертация кватерниона в матрицу вращения"""
@@ -117,14 +165,24 @@ def six_dof_animation(positions, rotations, sample_plot_freq=8):
     plt.show()
     return anim
 
+def runge_kutta_integration(acc, time_deltas):
+    vel = np.zeros_like(acc)
+    for i in range(1, len(acc)):
+        dt = time_deltas[i]
+        k1 = acc[i-1]
+        k2 = acc[i-1] + 0.5 * k1 * dt
+        k3 = acc[i-1] + 0.5 * k2 * dt
+        k4 = acc[i-1] + k3 * dt
+        vel[i] = vel[i-1] + (k1 + 2*k2 + 2*k3 + k4) / 6 * dt
+    return vel
+
 def main():
-    # Параметры обработки
-    sample_rate = 128  # Частота дискретизации (Гц)
-    sample_period = 1/sample_rate  # Период дискретизации
+    # 1. Загрузка данных с учетом времени
+    quaternions, acc, time_deltas = load_data('sensor_data/recording_20250329_191440.csv')
+    print(time_deltas)
+    # Средняя частота дискретизации (для фильтрации)
+    sample_rate = 1 / np.mean(time_deltas)
     filter_cutoff = 0.1  # Частота среза фильтра (Гц)
-    
-    # 1. Загрузка данных
-    quaternions, acc = load_data('sensor_data/test.csv')
     
     # 2. Визуализация исходных данных
     plot_data(acc, 'Raw Accelerometer Data')
@@ -146,9 +204,7 @@ def main():
     lin_acc *= 9.81  # Конвертация g в м/с²
     
     # 6. Расчет линейной скорости (интегрирование ускорения)
-    lin_vel = np.zeros_like(lin_acc)
-    for i in range(1, len(lin_acc)):
-        lin_vel[i] = lin_vel[i-1] + lin_acc[i] * sample_period
+    lin_vel = runge_kutta_integration(lin_acc, time_deltas)
     
     # 7. Фильтрация скорости (удаление дрейфа)
     nyquist = 0.5 * sample_rate
@@ -164,9 +220,7 @@ def main():
     lin_vel_hp = signal.filtfilt(b, a, lin_vel, axis=0)
     
     # 8. Расчет позиции (интегрирование скорости)
-    lin_pos = np.zeros_like(lin_vel_hp)
-    for i in range(1, len(lin_vel_hp)):
-        lin_pos[i] = lin_pos[i-1] + lin_vel_hp[i] * sample_period
+    lin_pos = runge_kutta_integration(lin_vel_hp, time_deltas)
     
     # 9. Фильтрация позиции (удаление дрейфа)
     lin_pos_hp = signal.filtfilt(b, a, lin_pos, axis=0)
