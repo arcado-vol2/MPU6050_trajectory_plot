@@ -43,6 +43,8 @@ private:
 	
 	//integration methods
 	void SquaresIntegration(int i, const std::vector<float>& input, std::vector<float>& output);
+	void TrapezoidIntegration(int i, const std::vector<float>& input, std::vector<float>& output);
+	void RungeKuttaIntegration(int i, const std::vector<float>& input, std::vector<float>& output);
 
 	void StartCalculation();
 	void Calculate();
@@ -72,7 +74,7 @@ private:
 	std::string csvFilePath = "";
 
 	
-	const char* integrationMethods[5] = {"Method of Squares", "Trapezoidal Rule", "Simpson's Rule", "Runge-Kutta Method", "Gaussian Quadrature"};
+	const char* integrationMethods[3] = {"Method of Squares", "Trapezoidal Rule", "Runge-Kutta Method"};
 	const int integrationMethodsCount = sizeof(integrationMethods) / sizeof(integrationMethods[0]);
 	int integrationMethodIndex = 0;
 
@@ -81,6 +83,7 @@ private:
 
 	// Graphics objects
 	unsigned int cubeVAO, cubeVBO;
+	unsigned int cubeAxesVAO, cubeAxesVBO;
 	unsigned int axesVAO, axesVBO;
 	unsigned int pointsVAO, pointsVBO;
 	unsigned int shaderProgram;
@@ -95,12 +98,17 @@ private:
 
 	// Dimensions
 	const float CUBE_SIZE = 1.0f;
-	const float AXIS_LENGTH = 1.5f;
+	const float AXIS_LENGTH = 3.5f;
+	const float CUBE_AXIS_LENGTH = 0.2f;
 
 	// Shader sources
 	const char* vertexShaderSource;
 	const char* fragmentShaderSource;
+
+	glm::vec3 cubePosition;
+	glm::mat3x3 cubeRotation;
 	
+	int tp = 0;
 };
 
 #endif // PLAYSCENE_H

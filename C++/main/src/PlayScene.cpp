@@ -17,6 +17,8 @@
 #include <glad/glad.h>
 
 
+#include <chrono>
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif // !M_PI
@@ -93,32 +95,35 @@ void PlayScene::Render() {
     glBindVertexArray(axesVAO);
     glDrawArrays(GL_LINES, 0, 6);
 
-    // Draw cube with rotation axes (if rotation data available)
-    if (!Rs.empty()) {
-        glm::mat4 cubeModel = glm::mat4(1.0f);
-        // Convert 3x3 matrix to glm::mat4
-        glm::mat3 rotationMat(
-            Rs[0], Rs[1], Rs[2],
-            Rs[3], Rs[4], Rs[5],
-            Rs[6], Rs[7], Rs[8]
-        );
-        cubeModel = glm::mat4(rotationMat);
+    // Draw cube with position and rotation from specialized variables
+    if (!pos.empty() && !isCalculating.load())
+    {
+        {
+            glm::mat4 cubeModel = glm::mat4(1.0f);
+            // Apply translation
+            cubeModel = glm::translate(cubeModel, cubePosition);
+            // Apply rotation (convert mat3x3 to mat4)
+            glm::mat4 rotationMat = glm::mat4(cubeRotation);
+            cubeModel = cubeModel * rotationMat;
 
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cubeModel));
-        glBindVertexArray(cubeVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
+            glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cubeModel));
+            glBindVertexArray(cubeVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
 
-        // Draw cube's local axes (red, green, blue)
-        glBindVertexArray(axesVAO);
-        glDrawArrays(GL_LINES, 0, 6);
-    }
-
+            // Draw cube's local axes (red, green, blue)
+            glBindVertexArray(cubeAxesVAO);
+            glDrawArrays(GL_LINES, 0, 6);
+        }
     // Draw points from pos array
-    if (!pos.empty() && isPlaying) {
-        glm::mat4 pointsModel = glm::mat4(1.0f);
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(pointsModel));
-        glBindVertexArray(pointsVAO);
-        glDrawArrays(GL_POINTS, 0, pos.size() / 3);
+        {
+            glm::mat4 pointsModel = glm::mat4(1.0f);
+            glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(pointsModel));
+            glBindVertexArray(pointsVAO);
+            glDrawArrays(GL_POINTS, 0, pos.size() / 3);
+
+            // Рендеринг линии, соединяющей точки
+            glDrawArrays(GL_LINE_STRIP, 0, pos.size() / 3); 
+        }
     }
 
     glBindVertexArray(0);
@@ -155,10 +160,32 @@ void PlayScene::Update() {
         cameraDistance += zoomSpeed;
     }
 
+
+
     // Keep angles in 0-360 range
     cameraAngleX = fmod(cameraAngleX, 360.0f);
     cameraAngleY = fmod(cameraAngleY, 360.0f);
     cameraAngleZ = fmod(cameraAngleZ, 360.0f);
+
+
+    if (calculationFuture.valid() &&
+        calculationFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        calculationFuture.get();  // Убедимся, что исключения (если есть) будут проброшены
+        InitPoints();  // Запускаем метод после завершения расчётов
+    }
+
+    if (isPlaying) {
+
+            cubePosition = glm::vec3(pos[tp * 3] * 10.0f, pos[tp * 3 + 1] * 10.0f, pos[tp * 3 + 2] * 10.0f);
+            cubeRotation = glm::mat3x3(
+                Rs[tp * 9    ], Rs[tp * 9 + 1], Rs[tp * 9 + 2],
+                Rs[tp * 9 + 3], Rs[tp * 9 + 4], Rs[tp * 9 + 5],
+                Rs[tp * 9 + 6], Rs[tp * 9 + 7], Rs[tp * 9 + 8]
+            );
+            tp = (tp + 1) % ts.size();
+
+    }
+
 }
 
 void PlayScene::LoadData() {
@@ -287,6 +314,12 @@ void PlayScene::Integrate(int i, const std::vector<float>& input, std::vector<fl
     case 0:
         SquaresIntegration(i, input, output);
         break;
+    case 1:
+        TrapezoidIntegration(i, input, output);
+        break;
+    case 2:
+        RungeKuttaIntegration(i, input, output);
+        break;
     default:
         SquaresIntegration(i, input, output);
         break;
@@ -343,6 +376,7 @@ void PlayScene::ConvertVtoPos(int i) {
 
 void PlayScene::StartCalculation() {
     std::cout << "Calc start\n";
+    calculationProgress.store(0);
     calculationFuture = std::async(std::launch::async, &PlayScene::Calculate, this);
 
 }
@@ -350,7 +384,7 @@ void PlayScene::StartCalculation() {
 
 void PlayScene::Calculate() {
 
-    calculationProgress = 0;
+    
     isCalculating = true;
 
     //1. Load of quaternions and accelerometer data
@@ -359,7 +393,7 @@ void PlayScene::Calculate() {
         std::cerr << "Not enough data!\n";
         return;
     }
-
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     //2. Calculate rotation matrices
     for (int i = 0; i < qs.size(); i += Q_SIZE) {
         float w = qs[i];
@@ -390,6 +424,7 @@ void PlayScene::Calculate() {
     for (int i = 0; i < ts.size(); i++) {
         ConvertAtoV(i);
         calculationProgress.store(calculationProgress + 1);
+
         sampleRate += ts[i];
 
     }
@@ -413,7 +448,11 @@ void PlayScene::Calculate() {
     HighPass3DFilter(pos, sampleRate, normalCutoff);
     calculationProgress.store(calculationProgress + dataSize.load());
     std::cout << "Calc end\n";
+
+    
     isCalculating = false;
+
+
 }
 
 #pragma region Integration_methods
@@ -425,6 +464,47 @@ void PlayScene::SquaresIntegration(int i, const std::vector<float>& input, std::
     output[i * 3 + 1] = output[(i - 1) * 3 + 1] + input[i * 3 + 1] * ts[i];
     output[i * 3 + 2] = output[(i - 1) * 3 + 2] + input[i * 3 + 2] * ts[i];
 }
+
+
+void PlayScene::TrapezoidIntegration(int i, const std::vector<float>& input, std::vector<float>& output) {
+    if (i == 0) {
+        return;
+    }
+
+    // (f(x_i) + f(x_{i-1})) * delta_x / 2
+    output[i * 3] = output[(i - 1) * 3] + (input[(i - 1) * 3] + input[i * 3]) * ts[i] / 2.0f;
+    output[i * 3 + 1] = output[(i - 1) * 3 + 1] + (input[(i - 1) * 3 + 1] + input[i * 3 + 1]) * ts[i] / 2.0f;
+    output[i * 3 + 2] = output[(i - 1) * 3 + 2] + (input[(i - 1) * 3 + 2] + input[i * 3 + 2]) * ts[i] / 2.0f;
+}
+
+
+void PlayScene::RungeKuttaIntegration(int i, const std::vector<float>& input, std::vector<float>& output) {
+    if (i == 0) {
+        return; // начальные условия должны быть заданы заранее
+    }
+
+    const float dt = ts[i]; // шаг времени
+    const float half_dt = dt * 0.5f;
+
+    // Интегрируем каждую компоненту скорости (x, y, z) отдельно
+    for (int k = 0; k < 3; ++k) {
+        const float prev_vel = output[(i - 1) * 3 + k];
+        const float prev_acc = input[(i - 1) * 3 + k];
+        const float curr_acc = input[i * 3 + k];
+
+        // Коэффициенты Рунге-Кутты 4-го порядка для dv/dt = a(t)
+        float k1 = prev_acc * dt;
+        float k2 = (prev_acc + 0.5f * (curr_acc - prev_acc)) * dt;
+        float k3 = k2; // для линейного a(t) k2 == k3
+        float k4 = curr_acc * dt;
+
+        // Интегрирование: v_i = v_{i-1} + (k1 + 2*k2 + 2*k3 + k4)/6
+        output[i * 3 + k] = prev_vel + (k1 + 2.0f * k2 + 2.0f * k3 + k4) / 6.0f;
+    }
+
+    
+}
+
 
 #pragma endregion
 
@@ -469,7 +549,6 @@ void PlayScene::RenderUI() {
         ImGui::BeginDisabled();
     }
     if (ImGui::Button("Start calculation") && !isCalc) {
-        std::cout << "test\n";
         StartCalculation();
         
     }
@@ -487,9 +566,10 @@ void PlayScene::RenderUI() {
         ImGui::BeginDisabled();
     }
     if (ImGui::Button(isPlaying ? "Stop animation": "Show animation")) {
-        if (!isPlaying)
-            InitPoints();
         isPlaying = !isPlaying;
+        if (isPlaying) {
+            //InitPoints();
+        }
     }
     if (isCalc || calcProgress == 0) {
         ImGui::EndDisabled();
@@ -562,7 +642,6 @@ void PlayScene::InitPoints() {
     // Create vector with positions and colors (yellow)
     std::vector<float> vertices;
     for (size_t i = 0; i < pos.size(); i += 3) {
-        std::cout << pos[i] << " " << pos[i+1] << " " << pos[i+2] << "\n ";
         vertices.push_back(pos[i] * 10.0f);
         vertices.push_back(pos[i + 1] * 10.0f);
         vertices.push_back(pos[i + 2] * 10.0f);
@@ -588,87 +667,121 @@ void PlayScene::InitPoints() {
 }
 
 void PlayScene::InitCube() {
-    float halfSize = CUBE_SIZE / 32.0f;
+    {
+        float halfSize = CUBE_SIZE / 32.0f;
+        cubePosition = glm::vec3(0.1f, 0.1f, 0.1f);
+        cubeRotation = glm::mat3x3(1, 0, 0, 0, 1, 0, 0, 0, 1);
 
-    std::vector<float> vertices = {
-        // Front face (red)
-        -halfSize, -halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
-         halfSize, -halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
-         halfSize,  halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
-         halfSize,  halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
-        -halfSize,  halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
-        -halfSize, -halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
+        std::vector<float> vertices = {
+            // Front face (red)
+            -halfSize, -halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
+             halfSize, -halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
+             halfSize,  halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
+             halfSize,  halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
+            -halfSize,  halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
+            -halfSize, -halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
 
-        // Back face (red)
-        -halfSize, -halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
-         halfSize, -halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
-         halfSize,  halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
-         halfSize,  halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
-        -halfSize,  halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
-        -halfSize, -halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
+            // Back face (red)
+            -halfSize, -halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
+             halfSize, -halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
+             halfSize,  halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
+             halfSize,  halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
+            -halfSize,  halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
+            -halfSize, -halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
 
-        // Left face (darker red)
-        -halfSize,  halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
-        -halfSize,  halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
-        -halfSize, -halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
-        -halfSize, -halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
-        -halfSize, -halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
-        -halfSize,  halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
+            // Left face (darker red)
+            -halfSize,  halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
+            -halfSize,  halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
+            -halfSize, -halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
+            -halfSize, -halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
+            -halfSize, -halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
+            -halfSize,  halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
 
-        // Right face (darker red)
-         halfSize,  halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
-         halfSize,  halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
-         halfSize, -halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
-         halfSize, -halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
-         halfSize, -halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
-         halfSize,  halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
+            // Right face (darker red)
+             halfSize,  halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
+             halfSize,  halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
+             halfSize, -halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
+             halfSize, -halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
+             halfSize, -halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
+             halfSize,  halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
 
-         // Bottom face (darkest red)
-         -halfSize, -halfSize, -halfSize,  0.5f, 0.1f, 0.1f,
-          halfSize, -halfSize, -halfSize,  0.5f, 0.1f, 0.1f,
-          halfSize, -halfSize,  halfSize,  0.5f, 0.1f, 0.1f,
-          halfSize, -halfSize,  halfSize,  0.5f, 0.1f, 0.1f,
-         -halfSize, -halfSize,  halfSize,  0.5f, 0.1f, 0.1f,
-         -halfSize, -halfSize, -halfSize,  0.5f, 0.1f, 0.1f,
+             // Bottom face (darkest red)
+             -halfSize, -halfSize, -halfSize,  0.5f, 0.1f, 0.1f,
+              halfSize, -halfSize, -halfSize,  0.5f, 0.1f, 0.1f,
+              halfSize, -halfSize,  halfSize,  0.5f, 0.1f, 0.1f,
+              halfSize, -halfSize,  halfSize,  0.5f, 0.1f, 0.1f,
+             -halfSize, -halfSize,  halfSize,  0.5f, 0.1f, 0.1f,
+             -halfSize, -halfSize, -halfSize,  0.5f, 0.1f, 0.1f,
 
-         // Top face (bright red)
-         -halfSize,  halfSize, -halfSize,  0.7f, 0.2f, 0.2f,
-          halfSize,  halfSize, -halfSize,  0.7f, 0.2f, 0.2f,
-          halfSize,  halfSize,  halfSize,  0.7f, 0.2f, 0.2f,
-          halfSize,  halfSize,  halfSize,  0.7f, 0.2f, 0.2f,
-         -halfSize,  halfSize,  halfSize,  0.7f, 0.2f, 0.2f,
-         -halfSize,  halfSize, -halfSize,  0.7f, 0.2f, 0.2f
-    };
+             // Top face (bright red)
+             -halfSize,  halfSize, -halfSize,  0.7f, 0.2f, 0.2f,
+              halfSize,  halfSize, -halfSize,  0.7f, 0.2f, 0.2f,
+              halfSize,  halfSize,  halfSize,  0.7f, 0.2f, 0.2f,
+              halfSize,  halfSize,  halfSize,  0.7f, 0.2f, 0.2f,
+             -halfSize,  halfSize,  halfSize,  0.7f, 0.2f, 0.2f,
+             -halfSize,  halfSize, -halfSize,  0.7f, 0.2f, 0.2f
+        };
 
-    glGenVertexArrays(1, &cubeVAO);
-    glGenBuffers(1, &cubeVBO);
+        glGenVertexArrays(1, &cubeVAO);
+        glGenBuffers(1, &cubeVBO);
 
-    glBindVertexArray(cubeVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+        glBindVertexArray(cubeVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+    }
+    {
+        std::vector<float> vertices = {
+            // X axis (red)
+            0.0f, 0.0f, 0.0f, 0.8f, 0.2f, 0.2f,
+            CUBE_AXIS_LENGTH, 0.0f, 0.0f, 0.8f, 0.2f, 0.2f,
+
+            // Y axis (green)
+            0.0f, 0.0f, 0.0f, 0.2f, 0.8f, 0.2f,
+            0.0f, CUBE_AXIS_LENGTH, 0.0f, 0.2f, 0.8f, 0.2f,
+
+            // Z axis (blue)
+            0.0f, 0.0f, 0.0f, 0.2f, 0.2f, 0.8f,
+            0.0f, 0.0f, CUBE_AXIS_LENGTH, 0.2f, 0.2f, 0.8f
+        };
+
+        glGenVertexArrays(1, &cubeAxesVAO);
+        glGenBuffers(1, &cubeAxesVBO);
+
+        glBindVertexArray(cubeAxesVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, cubeAxesVBO);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+    }
 }
 
 void PlayScene::InitAxes() {
     std::vector<float> vertices = {
         // X axis (red)
-        0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-        AXIS_LENGTH, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f, 0.6f, 0.6f,
+        AXIS_LENGTH, 0.0f, 0.0f, 1.0f, 0.6f, 0.6f,
 
         // Y axis (green)
-        0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, AXIS_LENGTH, 0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 0.6f, 1.0f, 0.6f,
+        0.0f, AXIS_LENGTH, 0.0f, 0.6f, 1.0f, 0.6f,
 
         // Z axis (blue)
-        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f, AXIS_LENGTH, 0.0f, 0.0f, 1.0f
+        0.0f, 0.0f, 0.0f, 0.6f, 0.6f, 1.0f,
+        0.0f, 0.0f, AXIS_LENGTH, 0.6f, 0.6f, 1.0f
     };
 
     glGenVertexArrays(1, &axesVAO);
