@@ -24,6 +24,7 @@ private:
     void InitBoard();
     void InitAxes();
     void SetupCamera();
+    void CompileShaders();
     std::string GenerateCSVFIlePath();
     bool StartNewRecording();
     void WriteToCSV();
@@ -56,6 +57,8 @@ private:
     //data stuff
     std::vector<float> q;
     std::vector<float> a;
+    unsigned long time;
+
 
     UIStuff::PopUp popUp;
 };

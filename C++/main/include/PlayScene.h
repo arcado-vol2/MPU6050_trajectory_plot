@@ -6,6 +6,8 @@
 #include <atomic>
 #include "UIStuff.h"
 #include <future>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #define Q_SIZE 4
 #define A_SIZE 3
@@ -18,7 +20,7 @@
 
 class PlayScene : public Scene {
 public:
-	PlayScene(COM::Port* comPort) : Scene(comPort), isCalculating(false), calculationProgress(0) {}
+	PlayScene(COM::Port* comPort);
 	~PlayScene();
 	void Render() override;
 	void Update() override;
@@ -28,7 +30,7 @@ private:
 	
 	const float g = 9.81f;
 	const float gravityVector[3] = { 0.0f, 0.0f, 1.0f };
-	const float filterCutoff = 0.1f;
+	const double filterCutoff = 0.1;
 
 	void LoadData();
 	void AddRotationMatrix(float w, float x, float y, float z);
@@ -36,7 +38,7 @@ private:
 	void CompensateGravity(int i);
 	void ConvertAtoV(int i);
 	void Integrate(int i, const std::vector<float>& input, std::vector<float>& output);
-	void HighPassFilter(std::vector<float>& data, int i, float a0, float a1, float b0, float b1);
+	void HighPass3DFilter(std::vector<float>& data, float sample_rate, float cutoff);
 	void ConvertVtoPos(int i);
 	
 	//integration methods
@@ -44,6 +46,15 @@ private:
 
 	void StartCalculation();
 	void Calculate();
+
+	
+	void InitCube();
+	void InitAxes();
+	void InitPoints();
+	void SetupCamera();
+	void CompileShaders();
+	
+
 
 	std::atomic<int> dataSize = 1;
 	std::atomic<int> calculationProgress;
@@ -58,15 +69,38 @@ private:
 	std::vector<float> vs;
 	std::vector<float> pos;
 
-	float filterXPrev[3] = { 0 };
-	float filterYPrev[3] = { 0 };
-
 	std::string csvFilePath = "";
 
 	
 	const char* integrationMethods[5] = {"Method of Squares", "Trapezoidal Rule", "Simpson's Rule", "Runge-Kutta Method", "Gaussian Quadrature"};
 	const int integrationMethodsCount = sizeof(integrationMethods) / sizeof(integrationMethods[0]);
 	int integrationMethodIndex = 0;
+
+	bool isPlaying = false;
+
+
+	// Graphics objects
+	unsigned int cubeVAO, cubeVBO;
+	unsigned int axesVAO, axesVBO;
+	unsigned int pointsVAO, pointsVBO;
+	unsigned int shaderProgram;
+
+	// Camera
+	glm::mat4 view;
+	glm::mat4 projection;
+	float cameraAngleX = 0.0f;
+	float cameraAngleY = 0.0f;
+	float cameraAngleZ = 0.0f;
+	float cameraDistance = 1.0f;
+
+	// Dimensions
+	const float CUBE_SIZE = 1.0f;
+	const float AXIS_LENGTH = 1.5f;
+
+	// Shader sources
+	const char* vertexShaderSource;
+	const char* fragmentShaderSource;
+	
 };
 
 #endif // PLAYSCENE_H

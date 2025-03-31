@@ -8,7 +8,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "UIStuff.h"
-#include <csv.h>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
@@ -74,15 +73,12 @@ RecordScene::~RecordScene() {
 }
 
 void RecordScene::InitRender() {
+    CompileShaders();
     InitBoard();
     InitAxes();
     SetupCamera();
 }
 
-static inline void trim(std::string& s) {
-    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](int ch) { return !std::isspace(ch); }));
-    s.erase(std::find_if(s.rbegin(), s.rend(), [](int ch) { return !std::isspace(ch); }).base(), s.end());
-}
 
 std::string RecordScene::GenerateCSVFIlePath() {
     auto now = std::time(nullptr);
@@ -113,22 +109,14 @@ bool RecordScene::StartNewRecording() {
 
 void RecordScene::WriteToCSV() {
     if (csvFile.is_open()) {
-        auto now = std::chrono::system_clock::now();
-        auto now_time = std::chrono::system_clock::to_time_t(now);
-        auto now_tm = *std::localtime(&now_time);
+        
 
-        //Microseconds
-        auto us = std::chrono::duration_cast<std::chrono::microseconds>(
-            now.time_since_epoch()) % 1000000;
-
-        //date time format: HOURS:MINUTS:SEC.MICROSE
-        csvFile << std::put_time(&now_tm, "%H:%M:%S") << "."
-            << std::setfill('0') << std::setw(6) << us.count() << ","
+        csvFile << time << ","
             << q[0] << "," << q[1] << "," << q[2] << "," << q[3] << ","
             << a[0] << "," << a[1] << "," << a[2] << "\n";
-    }
-    else {
-        std::cerr << "error due file writing " << csvFilePath << std::endl;
+
+        // —брасываем буфер, чтобы данные не тер€лись при аварийном завершении
+        csvFile.flush();
     }
 }
 
@@ -147,9 +135,9 @@ void RecordScene::Update() {
     while (p_comPort->BytesAvailable() > 0) {
         try {
             std::string line = p_comPort->Read();
-            
+
             if (line.empty()) continue;
-            //we get some comand code
+            //we get some command code
             if (line.length() == 2) {
                 //Start translation code
                 if (line[0] == '1') {
@@ -158,25 +146,39 @@ void RecordScene::Update() {
                 }
                 //End translation code
                 else if (line[0] == '0') {
-                    isRecording = false;
-                    StopRecording();
-                    popUp.ShowPopUp("Success", "File was succesfully saved!");
+                    if (isRecording) {
+                        popUp.ShowPopUp("Success", "File was succesfully saved!");
+                        isRecording = false;
+                        StopRecording();
+                    }
                     continue;
                 }
             }
-            
-            if (isRecording) {
 
+            if (isRecording) {
                 float values[7];
                 const char* ptr = line.data();
                 const char* const end = ptr + line.size();
                 int i = 0;
 
-                while (i < 7 && ptr < end) {
+                // First parse the time value
+                if (ptr < end) {
                     const char* comma = std::strchr(ptr, ',');
-                    if (i == 6) comma = end;
-                    if (!comma && i != 6) break;
-                    auto result = std::from_chars(ptr, comma, values[i]);
+                    if (!comma) comma = end;
+                    auto result = std::from_chars(ptr, comma, time);
+                    if (result.ec != std::errc() || (comma != end && *comma != ',')) {
+                        continue; // skip malformed line
+                    }
+                    ptr = comma + 1;
+                    i++;
+                }
+
+                // Then parse the 7 float values
+                while (i < 8 && ptr < end) {
+                    const char* comma = std::strchr(ptr, ',');
+                    if (i == 7) comma = end; // last value
+                    if (!comma && i != 7) break;
+                    auto result = std::from_chars(ptr, comma, values[i - 1]);
                     if (result.ec != std::errc() || (comma != end && *comma != ',')) {
                         break;
                     }
@@ -184,10 +186,12 @@ void RecordScene::Update() {
                     i++;
                 }
 
-                if (i == 7) {
+                if (i == 8) {
+                    // Store time and other values as needed
+                    // You might want to add time to your CSV or store it somewhere
                     std::copy(values, values + 4, q.begin());
                     std::copy(values + 4, values + 7, a.begin());
-                    WriteToCSV();
+                    WriteToCSV(); // Modify WriteToCSV to accept time parameter
                 }
             }
         }
@@ -364,7 +368,7 @@ void RecordScene::InitAxes() {
     glBindVertexArray(0);
 }
 
-void RecordScene::SetupCamera() {
+void RecordScene::CompileShaders() {
     //shader compilation
     unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
@@ -399,6 +403,10 @@ void RecordScene::SetupCamera() {
 
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
+}
+
+void RecordScene::SetupCamera() {
+
 
 
     view = glm::lookAt(

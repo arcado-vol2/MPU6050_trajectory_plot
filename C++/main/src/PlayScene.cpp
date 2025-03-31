@@ -5,37 +5,160 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <ctime>
 #include <iomanip>
 #include <thread>
-#include <chrono>
 #include <future>
 
 #include <cmath>
-#include <algorithm>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <GLFW/glfw3.h>
+#include <glad/glad.h>
+
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
-#endif
+#endif // !M_PI
 
+
+
+PlayScene::PlayScene(COM::Port* comPort) : Scene(comPort), isCalculating(false), calculationProgress(0) {
+    vertexShaderSource = "#version 330 core\n"
+        "layout (location = 0) in vec3 aPos;\n"
+        "layout (location = 1) in vec3 aColor;\n"
+        "uniform mat4 model;\n"
+        "uniform mat4 view;\n"
+        "uniform mat4 projection;\n"
+        "out vec3 ourColor;\n"
+        "void main()\n"
+        "{\n"
+        "   gl_Position = projection * view * model * vec4(aPos, 1.0);\n"
+        "   ourColor = aColor;\n"
+        "}\0";
+
+    fragmentShaderSource = "#version 330 core\n"
+        "in vec3 ourColor;\n"
+        "out vec4 FragColor;\n"
+        "void main()\n"
+        "{\n"
+        "   FragColor = vec4(ourColor, 1.0f);\n"
+        "}\0";
+}
 
 PlayScene::~PlayScene() {
     if (calculationFuture.valid()) {
-        calculationFuture.wait(); // Ожидаем завершения при уничтожении сцены
+        calculationFuture.wait();
     }
+    glDeleteVertexArrays(1, &cubeVAO);
+    glDeleteBuffers(1, &cubeVBO);
+    glDeleteVertexArrays(1, &axesVAO);
+    glDeleteBuffers(1, &axesVBO);
+    glDeleteVertexArrays(1, &pointsVAO);
+    glDeleteBuffers(1, &pointsVBO);
+    glDeleteProgram(shaderProgram);
 }
 
 void PlayScene::InitRender() {
-
-}
-
-void PlayScene::Render() {
-
+    CompileShaders();
+    InitCube();
+    InitAxes();
+    SetupCamera();
     
 }
 
-void PlayScene::Update() {
+void PlayScene::Render() {
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    glUseProgram(shaderProgram);
+
+    // Update camera view matrix based on rotation and zoom
+    glm::vec3 cameraPos = glm::vec3(3.0f, 2.0f, 3.0f) * cameraDistance;
+    glm::mat4 view = glm::lookAt(
+        cameraPos,
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+    view = glm::rotate(view, glm::radians(cameraAngleX), glm::vec3(1.0f, 0.0f, 0.0f));
+    view = glm::rotate(view, glm::radians(cameraAngleY), glm::vec3(0.0f, 1.0f, 0.0f));
+    view = glm::rotate(view, glm::radians(cameraAngleZ), glm::vec3(0.0f, 0.0f, 1.0f));
+
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+
+    // Draw coordinate axes (white)
+    glm::mat4 axisModel = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(axisModel));
+    glBindVertexArray(axesVAO);
+    glDrawArrays(GL_LINES, 0, 6);
+
+    // Draw cube with rotation axes (if rotation data available)
+    if (!Rs.empty()) {
+        glm::mat4 cubeModel = glm::mat4(1.0f);
+        // Convert 3x3 matrix to glm::mat4
+        glm::mat3 rotationMat(
+            Rs[0], Rs[1], Rs[2],
+            Rs[3], Rs[4], Rs[5],
+            Rs[6], Rs[7], Rs[8]
+        );
+        cubeModel = glm::mat4(rotationMat);
+
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cubeModel));
+        glBindVertexArray(cubeVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+
+        // Draw cube's local axes (red, green, blue)
+        glBindVertexArray(axesVAO);
+        glDrawArrays(GL_LINES, 0, 6);
+    }
+
+    // Draw points from pos array
+    if (!pos.empty() && isPlaying) {
+        glm::mat4 pointsModel = glm::mat4(1.0f);
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(pointsModel));
+        glBindVertexArray(pointsVAO);
+        glDrawArrays(GL_POINTS, 0, pos.size() / 3);
+    }
+
+    glBindVertexArray(0);
+}
+
+void PlayScene::Update() {
+    // Handle camera rotation with WASD
+    const float rotationSpeed = 2.0f;
+    const float zoomSpeed = 0.1f;
+
+    if (GetAsyncKeyState('A') & 0x8000) {
+        cameraAngleY -= rotationSpeed;
+    }
+    if (GetAsyncKeyState('D') & 0x8000) {
+        cameraAngleY += rotationSpeed;
+    }
+    if (GetAsyncKeyState('W') & 0x8000) {
+        cameraAngleX -= rotationSpeed;
+    }
+    if (GetAsyncKeyState('S') & 0x8000) {
+        cameraAngleX += rotationSpeed;
+    }
+    if (GetAsyncKeyState('Q') & 0x8000) {
+        cameraAngleZ -= rotationSpeed;
+    }
+    if (GetAsyncKeyState('E') & 0x8000) {
+        cameraAngleZ += rotationSpeed;
+    }
+    // Zoom in/out with X/Z
+    if (GetAsyncKeyState('X') & 0x8000) {
+        cameraDistance = std::max(0.1f, cameraDistance - zoomSpeed);
+    }
+    if (GetAsyncKeyState('Z') & 0x8000) {
+        cameraDistance += zoomSpeed;
+    }
+
+    // Keep angles in 0-360 range
+    cameraAngleX = fmod(cameraAngleX, 360.0f);
+    cameraAngleY = fmod(cameraAngleY, 360.0f);
+    cameraAngleZ = fmod(cameraAngleZ, 360.0f);
 }
 
 void PlayScene::LoadData() {
@@ -64,36 +187,19 @@ void PlayScene::LoadData() {
         std::istringstream iss(line);
         std::string token;
         int column = 0;
-        static double previousTime = 0.0;  // Используем double для большей точности
-        static bool isFirstTime = true;    // Флаг для первого значения
+        static bool isFirstTime = true;    
 
         while (std::getline(iss, token, ',')) {
+            // 0 is delta time
             if (column == 0) {
-                std::tm tm = {};
-                double microseconds = 0.0;
-                char dot;
-
-                std::istringstream timeStream(token);
-                timeStream >> std::get_time(&tm, "%H:%M:%S") >> dot >> microseconds;
-
-                if (timeStream.fail()) {
-                    std::cerr << "Error parsing time in file: " << csvFilePath << std::endl;
-                    continue;
+                try {
+                    ts.push_back(std::stoull(token) / 1000.0f);
+                    isFirstTime = false;
                 }
-
-                // Корректное вычисление времени в секундах (с double)
-                double currentTime = tm.tm_hour * 3600.0 + tm.tm_min * 60.0 + tm.tm_sec + microseconds / 1000000.0;
-
-                // Обработка перехода через полночь (если currentTime < previousTime)
-                if (currentTime < previousTime) {
-                    currentTime += 24 * 3600;  // Добавляем 24 часа
+                catch (...) {
+                    std::cerr << "Error parsing time (microseconds) in file: " << csvFilePath << std::endl;
+                    ts.push_back(0.0f);
                 }
-
-                double timeDifference = (isFirstTime) ? 0.0 : (currentTime - previousTime);
-                ts.push_back(static_cast<float>(timeDifference));  // Можно оставить float, но вычислять в double
-
-                previousTime = currentTime;
-                isFirstTime = false;
             }
             else if (column >= T_SIZE && column <= Q_SIZE) {
                 // Columns 1-4 go to qs
@@ -145,12 +251,11 @@ void PlayScene::AddRotationMatrix(float w, float x, float y, float z) {
     Rs.insert(Rs.end(), R, R + R_SIZE);
 }
 
-
 void PlayScene::TiltCompensateA(int i) {
     const float* R = &Rs[i * R_SIZE];
     float* a = &as[i * A_SIZE];
 
-    const float ax = a[0], ay = a[1], az = a[3];
+    const float ax = a[0], ay = a[1], az = a[2];
 
     // R x a 
     a[0] = R[0] * ax + R[1] * ay + R[2] * az;  
@@ -175,7 +280,6 @@ void PlayScene::ConvertAtoV(int i) {
     Integrate(i, as, vs);
 }
 
-
 void PlayScene::Integrate(int i, const std::vector<float>& input, std::vector<float>& output) {
     if (i == 0) return;
     switch (integrationMethodIndex)
@@ -189,22 +293,48 @@ void PlayScene::Integrate(int i, const std::vector<float>& input, std::vector<fl
     }
 }
 
-void PlayScene::HighPassFilter(std::vector<float>& data, int i, float a0, float a1, float b0, float b1) {
-    if (i <= 0 || i * 3 + 2 >= vs.size()) {
-        std::cerr << "High pass filter error i:" << i << std::endl;
-        return;
+void PlayScene::HighPass3DFilter(std::vector<float>& data, float sample_rate, float cutoff) {
+
+
+    // Buttower coef 1 order
+    double tan_wc = std::tan(M_PI * cutoff);
+    double b0 = 1.0 / (1.0 + tan_wc);
+    double b1 = -b0;
+    double a1 = (tan_wc - 1.0) / (tan_wc + 1.0);
+
+    int num_columns = 3;
+    size_t num_rows = data.size() / num_columns;
+    for (size_t col = 0; col < num_columns; ++col) {
+        std::vector<double> column(num_rows);
+        for (size_t i = 0; i < num_rows; ++i) {
+            column[i] = data[i * num_columns + col];
+        }
+
+        // Straight pass
+        std::vector<double> forward(num_rows);
+        double prev_input = 0.0, prev_output = 0.0;
+        for (size_t i = 0; i < num_rows; ++i) {
+            forward[i] = b0 * column[i] + b1 * prev_input - a1 * prev_output;
+            prev_input = column[i];
+            prev_output = forward[i];
+        }
+
+        // Return pass (like filtfilt)
+        std::vector<double> backward(num_rows);
+        prev_input = 0.0;
+        prev_output = 0.0;
+        for (int i = num_rows - 1; i >= 0; --i) {
+            backward[i] = b0 * forward[i] + b1 * prev_input - a1 * prev_output;
+            prev_input = forward[i];
+            prev_output = backward[i];
+        }
+
+        // Saving
+        for (size_t i = 0; i < num_rows; ++i) {
+            data[i * num_columns + col] = backward[i];
+        }
     }
 
-    for (int ch = 0; ch < 3; ch++) {
-        int idx = i * 3 + ch;
-
-        float x = data[idx];
-        float y = b0 * x + b1 * filterXPrev[ch] - a1 * filterYPrev[ch];
-
-        filterXPrev[ch] = x;
-        filterYPrev[ch] = y;
-        data[idx] = y;
-    }
 }
 
 void PlayScene::ConvertVtoPos(int i) {
@@ -212,8 +342,6 @@ void PlayScene::ConvertVtoPos(int i) {
 }
 
 void PlayScene::StartCalculation() {
-
-
     std::cout << "Calc start\n";
     calculationFuture = std::async(std::launch::async, &PlayScene::Calculate, this);
 
@@ -221,6 +349,7 @@ void PlayScene::StartCalculation() {
 
 
 void PlayScene::Calculate() {
+
     calculationProgress = 0;
     isCalculating = true;
 
@@ -254,80 +383,50 @@ void PlayScene::Calculate() {
         calculationProgress.store(calculationProgress + 1);
     }
 
-    //for 6.
-    float sampleRate = 0.0f;
-
     //5. Velocity calculation
-
+    double sampleRate = 0.0; //for 6.
     vs.resize(as.size());
+    vs[0] = vs[1] = vs[2] = 0.0f;
     for (int i = 0; i < ts.size(); i++) {
         ConvertAtoV(i);
         calculationProgress.store(calculationProgress + 1);
         sampleRate += ts[i];
 
     }
-    sampleRate = 1.0f / (sampleRate / ts.size());
+    sampleRate = 1.0 / (sampleRate / ts.size());
 
     //6. Drift compensation
-
-    float nyQuist = 0.5f * sampleRate;
-    float normalCutoff = std::clamp(filterCutoff / nyQuist, 0.01f, 0.99f);
-    
-    //High pass filter
-    float alpha = tanf(M_PI * normalCutoff / 2.0f);
-    float commonTerm = 1.0f / (1.0f + alpha);
-
-    float b0 = 1.0f * commonTerm;
-    float b1 = -1.0f * commonTerm;
-    float a0 = 1.0f;
-    float a1 = (1.0f - alpha) * commonTerm;
-
-
-    for (int i = 1; i < ts.size(); i++) {
-        HighPassFilter(vs, i, a0, a1, b0, b1);
-        calculationProgress.store(calculationProgress + 1);
-    }
-    calculationProgress.store(calculationProgress + 1);
-    
+    double nyQuist = 0.5f * sampleRate;
+    double normalCutoff = filterCutoff / nyQuist;
+    HighPass3DFilter(vs, sampleRate, normalCutoff);
+    calculationProgress.store(calculationProgress + dataSize.load());
 
     //7. Position calculation
     pos.resize(vs.size());
     for (int i = 0; i < ts.size(); i++) {
-        ConvertAtoV(i);
+        ConvertVtoPos(i);
         calculationProgress.store(calculationProgress + 1);
     }
-
-    std::cout << "Calc end\n";
-    isCalculating = false;
+    
 
     //8. Position filtration
-    filterXPrev[3] = { 0 };
-    filterYPrev[3] = { 0 };
-    for (int i = 1; i < ts.size(); i++) {
-        HighPassFilter(pos, i, a0, a1, b0, b1);
-        calculationProgress.store(calculationProgress + 1);
-    }
-    calculationProgress.store(calculationProgress + 1);
+    HighPass3DFilter(pos, sampleRate, normalCutoff);
+    calculationProgress.store(calculationProgress + dataSize.load());
+    std::cout << "Calc end\n";
+    isCalculating = false;
 }
 
 #pragma region Integration_methods
 void PlayScene::SquaresIntegration(int i, const std::vector<float>& input, std::vector<float>& output) {
-
-    const float* prev_in = &input[(i - 1) * INTEGRATION_SIZE];
-    const float* curr_in = &input[i * INTEGRATION_SIZE];
-    float* prev_out = &output[(i - 1) * INTEGRATION_SIZE];
-    float* curr_out = &output[i * INTEGRATION_SIZE];
-
-    curr_out[0] = prev_out[0] + curr_in[0] * ts[i]; // X
-    curr_out[1] = prev_out[1] + curr_in[1] * ts[i]; // Y
-    curr_out[2] = prev_out[2] + curr_in[2] * ts[i]; // Z
-
+    if (i == 0) {
+        return;
+    }
+    output[i * 3] = output[(i - 1) * 3] + input[i * 3] * ts[i];
+    output[i * 3 + 1] = output[(i - 1) * 3 + 1] + input[i * 3 + 1] * ts[i];
+    output[i * 3 + 2] = output[(i - 1) * 3 + 2] + input[i * 3 + 2] * ts[i];
 }
 
-
 #pragma endregion
-
-
 
 
 void PlayScene::RenderUI() {
@@ -335,6 +434,9 @@ void PlayScene::RenderUI() {
     bool isCalc = isCalculating.load();
 
     ImGui::Begin("Play Scene");
+    if (isCalc) {
+        ImGui::BeginDisabled();
+    }
     if (ImGui::Button("Choose data file")) {
 
         csvFilePath = UIStuff::OpenFileDialog(L"*.txt;*.csv");
@@ -359,9 +461,11 @@ void PlayScene::RenderUI() {
         }
         ImGui::EndCombo();
     }
+    if (isCalc) {
+        ImGui::EndDisabled();
+    }
 
-
-    if (csvFilePath == "") {
+    if (csvFilePath == "" || isPlaying) {
         ImGui::BeginDisabled();
     }
     if (ImGui::Button("Start calculation") && !isCalc) {
@@ -369,7 +473,7 @@ void PlayScene::RenderUI() {
         StartCalculation();
         
     }
-    if (csvFilePath == "") {
+    if (csvFilePath == "" || isPlaying) {
         ImGui::EndDisabled();
     }
 
@@ -382,8 +486,10 @@ void PlayScene::RenderUI() {
     if (isCalc || calcProgress == 0) {
         ImGui::BeginDisabled();
     }
-    if (ImGui::Button("Show animation")) {
-
+    if (ImGui::Button(isPlaying ? "Stop animation": "Show animation")) {
+        if (!isPlaying)
+            InitPoints();
+        isPlaying = !isPlaying;
     }
     if (isCalc || calcProgress == 0) {
         ImGui::EndDisabled();
@@ -391,4 +497,192 @@ void PlayScene::RenderUI() {
     ImGui::End();
     
 
+
+
+}
+
+
+void PlayScene::CompileShaders() {
+    unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+    glCompileShader(vertexShader);
+
+    int success;
+    char infoLog[512];
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
+        std::cerr << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
+    }
+
+    unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+    glCompileShader(fragmentShader);
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+        std::cerr << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << std::endl;
+    }
+
+    shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    glLinkProgram(shaderProgram);
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+        std::cerr << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
+    }
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+}
+
+void PlayScene::SetupCamera() {
+    view = glm::lookAt(
+        glm::vec3(3.0f, 2.0f, 3.0f), // camera position
+        glm::vec3(0.0f, 0.0f, 0.0f), // look at origin
+        glm::vec3(0.0f, 0.0f, 1.0f)  // up vector
+    );
+
+    projection = glm::perspective(
+        glm::radians(45.0f), // FOV
+        800.0f / 600.0f,    // aspect ratio
+        0.1f,               // near plane
+        100.0f              // far plane
+    );
+
+    glEnable(GL_DEPTH_TEST);
+    glPointSize(5.0f); // Set point size for position markers
+}
+
+void PlayScene::InitPoints() {
+    if (pos.empty()) return;
+
+    // Create vector with positions and colors (yellow)
+    std::vector<float> vertices;
+    for (size_t i = 0; i < pos.size(); i += 3) {
+        std::cout << pos[i] << " " << pos[i+1] << " " << pos[i+2] << "\n ";
+        vertices.push_back(pos[i] * 10.0f);
+        vertices.push_back(pos[i + 1] * 10.0f);
+        vertices.push_back(pos[i + 2] * 10.0f);
+        vertices.push_back(1.0f); // R
+        vertices.push_back(1.0f); // G
+        vertices.push_back(0.0f); // B
+    }
+
+    glGenVertexArrays(1, &pointsVAO);
+    glGenBuffers(1, &pointsVBO);
+
+    glBindVertexArray(pointsVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, pointsVBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
+
+void PlayScene::InitCube() {
+    float halfSize = CUBE_SIZE / 32.0f;
+
+    std::vector<float> vertices = {
+        // Front face (red)
+        -halfSize, -halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
+         halfSize, -halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
+         halfSize,  halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
+         halfSize,  halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
+        -halfSize,  halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
+        -halfSize, -halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
+
+        // Back face (red)
+        -halfSize, -halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
+         halfSize, -halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
+         halfSize,  halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
+         halfSize,  halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
+        -halfSize,  halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
+        -halfSize, -halfSize, -halfSize,  0.8f, 0.2f, 0.2f,
+
+        // Left face (darker red)
+        -halfSize,  halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
+        -halfSize,  halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
+        -halfSize, -halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
+        -halfSize, -halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
+        -halfSize, -halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
+        -halfSize,  halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
+
+        // Right face (darker red)
+         halfSize,  halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
+         halfSize,  halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
+         halfSize, -halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
+         halfSize, -halfSize, -halfSize,  0.6f, 0.1f, 0.1f,
+         halfSize, -halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
+         halfSize,  halfSize,  halfSize,  0.6f, 0.1f, 0.1f,
+
+         // Bottom face (darkest red)
+         -halfSize, -halfSize, -halfSize,  0.5f, 0.1f, 0.1f,
+          halfSize, -halfSize, -halfSize,  0.5f, 0.1f, 0.1f,
+          halfSize, -halfSize,  halfSize,  0.5f, 0.1f, 0.1f,
+          halfSize, -halfSize,  halfSize,  0.5f, 0.1f, 0.1f,
+         -halfSize, -halfSize,  halfSize,  0.5f, 0.1f, 0.1f,
+         -halfSize, -halfSize, -halfSize,  0.5f, 0.1f, 0.1f,
+
+         // Top face (bright red)
+         -halfSize,  halfSize, -halfSize,  0.7f, 0.2f, 0.2f,
+          halfSize,  halfSize, -halfSize,  0.7f, 0.2f, 0.2f,
+          halfSize,  halfSize,  halfSize,  0.7f, 0.2f, 0.2f,
+          halfSize,  halfSize,  halfSize,  0.7f, 0.2f, 0.2f,
+         -halfSize,  halfSize,  halfSize,  0.7f, 0.2f, 0.2f,
+         -halfSize,  halfSize, -halfSize,  0.7f, 0.2f, 0.2f
+    };
+
+    glGenVertexArrays(1, &cubeVAO);
+    glGenBuffers(1, &cubeVBO);
+
+    glBindVertexArray(cubeVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
+
+void PlayScene::InitAxes() {
+    std::vector<float> vertices = {
+        // X axis (red)
+        0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        AXIS_LENGTH, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+
+        // Y axis (green)
+        0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, AXIS_LENGTH, 0.0f, 0.0f, 1.0f, 0.0f,
+
+        // Z axis (blue)
+        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+        0.0f, 0.0f, AXIS_LENGTH, 0.0f, 0.0f, 1.0f
+    };
+
+    glGenVertexArrays(1, &axesVAO);
+    glGenBuffers(1, &axesVBO);
+
+    glBindVertexArray(axesVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, axesVBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
 }

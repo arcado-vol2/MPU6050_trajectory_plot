@@ -4,7 +4,7 @@
 #define DEBOUNCE_DELAY 50
 #define BUFFER_SIZE 45
 #define SERIAL_SPEED 115200
-#define ENABLE_CALIBRATION 0
+#define ENABLE_CALIBRATION 1
 #define ACCEL_SCALE 8192.0
 
 
@@ -17,7 +17,7 @@ uint8_t fifoBuffer[BUFFER_SIZE];
 
 
 unsigned long lastDebounceTime = 0; //just becouse i didn't have capacitor on button
-
+unsigned long lastMeasurementTime = 0; 
 
 
 void setup() {
@@ -93,6 +93,7 @@ void loop() {
     buttonPressed = false;
     outputEnabled = !outputEnabled;
     if (outputEnabled) {
+      lastMeasurementTime = millis();
       Serial.println("1");
     } else {
       Serial.println("0");
@@ -110,9 +111,10 @@ void loop() {
     mpu.dmpGetGravity(&gravity, &q);
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
     mpu.dmpGetAccel(&aa, fifoBuffer);
+
     
     mpuFlag = false;
-    
+    Serial.print(millis() - lastMeasurementTime); Serial.print(',');
     Serial.print(q.w);                Serial.print(',');
     Serial.print(q.x);                Serial.print(',');
     Serial.print(q.y);                Serial.print(',');
@@ -121,6 +123,6 @@ void loop() {
     Serial.print(aa.x / ACCEL_SCALE); Serial.print(',');
     Serial.print(aa.y / ACCEL_SCALE); Serial.print(',');
     Serial.print(aa.z / ACCEL_SCALE); Serial.println();
-
+    lastMeasurementTime = millis();
   }
 }

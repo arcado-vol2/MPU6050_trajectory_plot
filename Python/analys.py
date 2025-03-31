@@ -45,7 +45,7 @@ def load_data(filename):
         parts = line.strip().split(',')
         time_str = parts[0]
         quat_acc = list(map(float, parts[1:8]))
-        timestamp = parse_time(time_str)
+        timestamp = float(time_str)  / 1000
         data.append([timestamp] + quat_acc)
     
     data = np.array(data)
@@ -53,12 +53,8 @@ def load_data(filename):
     quaternions = data[:, 1:5]  # Колонки 1-4: кватернион [w, x, y, z]
     acc = data[:, 5:8]         # Колонки 5-7: акселерометр [X, Y, Z]
     
-    # Вычисляем дельты времени между измерениями
-    time_deltas = np.diff(timestamps)
-    # Первый delta - среднее последующих (так как diff дает на 1 элемент меньше)
-    time_deltas = np.insert(time_deltas, 0, np.mean(time_deltas))
     
-    return quaternions, acc, time_deltas
+    return quaternions, acc, timestamps
 
 def quaternion_to_rotation_matrix(q):
     """Конвертация кватерниона в матрицу вращения"""
@@ -178,7 +174,7 @@ def runge_kutta_integration(acc, time_deltas):
 
 def main():
     # 1. Загрузка данных с учетом времени
-    quaternions, acc, time_deltas = load_data('sensor_data/recording_20250329_191440.csv')
+    quaternions, acc, time_deltas = load_data('sensor_data/recording_20250331_143602.csv')
     print(time_deltas)
     # Средняя частота дискретизации (для фильтрации)
     sample_rate = 1 / np.mean(time_deltas)
@@ -205,7 +201,7 @@ def main():
     
     # 6. Расчет линейной скорости (интегрирование ускорения)
     lin_vel = runge_kutta_integration(lin_acc, time_deltas)
-    
+
     # 7. Фильтрация скорости (удаление дрейфа)
     nyquist = 0.5 * sample_rate
     normal_cutoff = filter_cutoff / nyquist

@@ -21,9 +21,37 @@ namespace COM {
         return isOpen;
     }
 
-    bool Port::Open() {
+    bool Port::IsAvailable() {
         std::string fullPortName = "\\\\.\\" + portName;
-        //Basicly I send only float values, so it's wiser to use ANSI
+        HANDLE hTest = CreateFileA(fullPortName.c_str(),
+            GENERIC_READ,
+            0,
+            NULL,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            NULL);
+
+        if (hTest == INVALID_HANDLE_VALUE) {
+            return false;
+        }
+
+        DCB dcbSerialParams = { 0 };
+        dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
+        if (!GetCommState(hTest, &dcbSerialParams)) {
+            CloseHandle(hTest);
+            return false;
+        }
+
+        CloseHandle(hTest);
+        return true;
+    }
+
+    bool Port::Open() {
+
+        //No need to call IsAvaible cos it create temp handler and here we creating main handler
+        //So if I decide to call IsAvaible here code will create two handlers
+        std::string fullPortName = "\\\\.\\" + portName;
+        //Basicly I send only float and int values, so it's wiser to use ANSI
         hSerial = CreateFileA(fullPortName.c_str(),
             GENERIC_READ,
             0,

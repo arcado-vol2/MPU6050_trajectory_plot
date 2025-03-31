@@ -24,7 +24,7 @@ namespace COM {
         HANDLE hSerial;
         COMSTAT status;
         DWORD errors;
-        bool isOpen;
+        bool isOpen = false;
 
         std::string portName;
         int portSpeed;
@@ -59,14 +59,23 @@ namespace COM {
         * @return name of port
         */
         const std::string& GetName() const;
-
+        /**
+        * @brief check if port is available
+        * @return available status
+        */
+        bool IsAvailable();
         /**
         * @brief release com device
         */
         void Close();
-
+        /**
+        * @brief getter of open var
+        */
         bool IsOpen();
-
+        /**
+        * @brief returns number of bytes available in the input buffer
+        * @return count of unread bytes in the receive queue
+        */
         int BytesAvailable();
         
     };

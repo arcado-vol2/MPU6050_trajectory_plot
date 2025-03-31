@@ -11,7 +11,6 @@
 #include "backends/imgui_impl_opengl3.h"
 #include "imguiThemes.h"
 
-#include "csv.h"
 #include "ComPort.h"
 #include <iostream>
 #include <memory>
@@ -23,7 +22,6 @@
 #include "RecordScene.h"
 #include "PlayScene.h"
 #include "RealtimeScene.h"
-
 
 #define TARGET_FPS 60
 
@@ -38,7 +36,8 @@ void SetupCurrentPort(const std::string& name){
         currentPort->Close();
     }
     currentPort = std::make_unique<COM::Port>(name, 115200);
-    if (!currentPort->Open()) {
+    
+    if (!currentPort->IsAvailable()) {
         currentPort.reset(); 
         selectedPortIndex = -1;
     }
@@ -74,11 +73,11 @@ int main(void)
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); //you might want to do this when testing
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 
-
-    GLFWwindow* window = glfwCreateWindow(640, 480, "Visualizer", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1280, 960, "Visualizer", NULL, NULL);
     if (!window)
     {
         glfwTerminate();
@@ -110,7 +109,7 @@ int main(void)
     //io.ConfigViewportsNoAutoMerge = true;
     //io.ConfigViewportsNoTaskBarIcon = true;
 
-    io.FontGlobalScale = 1.2f;
+    io.FontGlobalScale = 1.4f;
 
     ImGuiStyle& style = ImGui::GetStyle();
     if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
@@ -189,7 +188,7 @@ int main(void)
         {
             SceneType newSceneType = static_cast<SceneType>(currentSceneIndex);
 
-            // Проверяем, что currentPort не nullptr, если новая сцена не NORENDER или PLAY
+
             if (currentPort != nullptr || newSceneType == SceneType::NORENDER || newSceneType == SceneType::PLAY) {
                 if (currentPort != nullptr && currentPort->IsOpen())
                     currentPort->Close();
