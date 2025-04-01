@@ -6,7 +6,7 @@
 #define SERIAL_SPEED 115200
 #define ENABLE_CALIBRATION 1
 #define ACCEL_SCALE 8192.0
-
+#define FILTER_COOEF 0.93
 
 MPU6050 mpu;
 volatile bool mpuFlag = false;  // mpu interaption flag
@@ -20,8 +20,12 @@ unsigned long lastDebounceTime = 0; //just becouse i didn't have capacitor on bu
 unsigned long lastMeasurementTime = 0; 
 
 
+VectorInt16 aaFiltered = VectorInt16(0,0,ACCEL_SCALE);
+
+
 void setup() {
   
+
   bool allowCalibration;
 
   if(digitalRead(8) == LOW){
@@ -48,6 +52,7 @@ void setup() {
 
   mpu.dmpInitialize();
   mpu.setDMPEnabled(true);
+  mpu.setDLPFMode(MPU6050_DLPF_BW_20);
   attachInterrupt(0, dmpReady, RISING);
 
   
@@ -85,6 +90,10 @@ void buttonISR() {
   lastDebounceTime = millis();
 }
 
+void CompFilter(int input, int& filtered){
+  filtered = FILTER_COOEF * filtered + (1 - FILTER_COOEF) * input;
+}
+
 void loop() {
 
   #pragma region button
@@ -112,17 +121,24 @@ void loop() {
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
     mpu.dmpGetAccel(&aa, fifoBuffer);
 
+    CompFilter(aa.x, aaFiltered.x);
+    CompFilter(aa.y, aaFiltered.y);
+    CompFilter(aa.z, aaFiltered.z);
     
     mpuFlag = false;
+    
     Serial.print(millis() - lastMeasurementTime); Serial.print(',');
-    Serial.print(q.w);                Serial.print(',');
-    Serial.print(q.x);                Serial.print(',');
-    Serial.print(q.y);                Serial.print(',');
-    Serial.print(q.z);                Serial.print(',');
+    Serial.print(q.w, 4);                Serial.print(',');
+    Serial.print(q.x, 4);                Serial.print(',');
+    Serial.print(q.y, 4);                Serial.print(',');
+    Serial.print(q.z, 4);                Serial.print(',');
 
-    Serial.print(aa.x / ACCEL_SCALE); Serial.print(',');
-    Serial.print(aa.y / ACCEL_SCALE); Serial.print(',');
-    Serial.print(aa.z / ACCEL_SCALE); Serial.println();
+    Serial.print(aaFiltered.x / ACCEL_SCALE, 4); Serial.print(',');
+    Serial.print(aaFiltered.y / ACCEL_SCALE, 4); Serial.print(',');
+    Serial.print(aaFiltered.z / ACCEL_SCALE, 4); Serial.println();
+
+
     lastMeasurementTime = millis();
+
   }
 }

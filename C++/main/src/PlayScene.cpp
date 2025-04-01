@@ -18,6 +18,7 @@
 
 
 #include <chrono>
+#include <iomanip>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -176,13 +177,13 @@ void PlayScene::Update() {
 
     if (isPlaying) {
 
-            cubePosition = glm::vec3(pos[tp * 3] * 10.0f, pos[tp * 3 + 1] * 10.0f, pos[tp * 3 + 2] * 10.0f);
+            cubePosition = glm::vec3(pos[currentFrame * 3] * 10.0f, pos[currentFrame * 3 + 1] * 10.0f, pos[currentFrame * 3 + 2] * 10.0f);
             cubeRotation = glm::mat3x3(
-                Rs[tp * 9    ], Rs[tp * 9 + 1], Rs[tp * 9 + 2],
-                Rs[tp * 9 + 3], Rs[tp * 9 + 4], Rs[tp * 9 + 5],
-                Rs[tp * 9 + 6], Rs[tp * 9 + 7], Rs[tp * 9 + 8]
+                Rs[currentFrame * 9    ], Rs[currentFrame * 9 + 1], Rs[currentFrame * 9 + 2],
+                Rs[currentFrame * 9 + 3], Rs[currentFrame * 9 + 4], Rs[currentFrame * 9 + 5],
+                Rs[currentFrame * 9 + 6], Rs[currentFrame * 9 + 7], Rs[currentFrame * 9 + 8]
             );
-            tp = (tp + 1) % ts.size();
+            currentFrame = (currentFrame + 1) % ts.size();
 
     }
 
@@ -375,10 +376,31 @@ void PlayScene::ConvertVtoPos(int i) {
 }
 
 void PlayScene::StartCalculation() {
-    std::cout << "Calc start\n";
+    std::cout << "Calc start\n"; 
+    ts.clear();
+    qs.clear();
+    as.clear();
+    Rs.clear();
+    vs.clear();
+    pos.clear();
     calculationProgress.store(0);
     calculationFuture = std::async(std::launch::async, &PlayScene::Calculate, this);
 
+}
+
+
+
+void SaveToSCV(const std::vector<float>& data, int s, const char* header, const char* name) {
+    std::ofstream file(name);
+    file << header << "\n";
+    for (int i = 0; i < data.size(); i += s) {
+        for (int j = 0; j < s; j++) {
+            file << data[i + j];
+            if (j != s - 1) file << ",";
+        }
+        file << "\n";
+    }
+    file.close();
 }
 
 
@@ -393,7 +415,10 @@ void PlayScene::Calculate() {
         std::cerr << "Not enough data!\n";
         return;
     }
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    SaveToSCV(as, 3, "ax,ay,az", "data/1_raw_acc.csv");
+    SaveToSCV(ts, 1, "delta_t", "data/1_delta_t.csv");
+    SaveToSCV(qs, 4, "qw,qx,qy,qz", "data/1_raw_quarant.csv");
+    
     //2. Calculate rotation matrices
     for (int i = 0; i < qs.size(); i += Q_SIZE) {
         float w = qs[i];
@@ -404,18 +429,21 @@ void PlayScene::Calculate() {
         AddRotationMatrix(w, x, y, z);
         calculationProgress.store(calculationProgress + 1);
     }
+    SaveToSCV(Rs, 9, "R11,R12,R13,R21,R22,R23,R31,R32,R33", "data/2_R.csv");
 
     //3. Tilt compensation
     for (int i = 0; i < ts.size(); i++) {
         TiltCompensateA(i);
         calculationProgress.store(calculationProgress + 1);
     }
+    SaveToSCV(as, 3, "ax,ay,az", "data/3_rot_comp_acc.csv");
 
     //4. Convert to linear velocity
     for (int i = 0; i < ts.size(); i++) {
         CompensateGravity(i);
         calculationProgress.store(calculationProgress + 1);
     }
+    SaveToSCV(as, 3, "ax,ay,az", "data/4_g_comp_acc.csv");
 
     //5. Velocity calculation
     double sampleRate = 0.0; //for 6.
@@ -429,12 +457,14 @@ void PlayScene::Calculate() {
 
     }
     sampleRate = 1.0 / (sampleRate / ts.size());
+    SaveToSCV(vs, 3, "vx,vy,vz", "data/5_raw_velocity.csv");
 
     //6. Drift compensation
     double nyQuist = 0.5f * sampleRate;
     double normalCutoff = filterCutoff / nyQuist;
     HighPass3DFilter(vs, sampleRate, normalCutoff);
     calculationProgress.store(calculationProgress + dataSize.load());
+    SaveToSCV(vs, 3, "vx,vy,vz", "data/6_filtered_velocity.csv");
 
     //7. Position calculation
     pos.resize(vs.size());
@@ -442,13 +472,13 @@ void PlayScene::Calculate() {
         ConvertVtoPos(i);
         calculationProgress.store(calculationProgress + 1);
     }
-    
+    SaveToSCV(pos, 3, "px,py,pz", "data/7_raw_position.csv");
 
     //8. Position filtration
     HighPass3DFilter(pos, sampleRate, normalCutoff);
     calculationProgress.store(calculationProgress + dataSize.load());
     std::cout << "Calc end\n";
-
+    SaveToSCV(pos, 3, "px,py,pz", "data/8_filtered_position.csv");
     
     isCalculating = false;
 
@@ -480,25 +510,22 @@ void PlayScene::TrapezoidIntegration(int i, const std::vector<float>& input, std
 
 void PlayScene::RungeKuttaIntegration(int i, const std::vector<float>& input, std::vector<float>& output) {
     if (i == 0) {
-        return; // начальные условия должны быть заданы заранее
+        return; 
     }
 
     const float dt = ts[i]; // шаг времени
     const float half_dt = dt * 0.5f;
 
-    // Интегрируем каждую компоненту скорости (x, y, z) отдельно
     for (int k = 0; k < 3; ++k) {
         const float prev_vel = output[(i - 1) * 3 + k];
         const float prev_acc = input[(i - 1) * 3 + k];
         const float curr_acc = input[i * 3 + k];
 
-        // Коэффициенты Рунге-Кутты 4-го порядка для dv/dt = a(t)
         float k1 = prev_acc * dt;
         float k2 = (prev_acc + 0.5f * (curr_acc - prev_acc)) * dt;
-        float k3 = k2; // для линейного a(t) k2 == k3
+        float k3 = k2; 
         float k4 = curr_acc * dt;
 
-        // Интегрирование: v_i = v_{i-1} + (k1 + 2*k2 + 2*k3 + k4)/6
         output[i * 3 + k] = prev_vel + (k1 + 2.0f * k2 + 2.0f * k3 + k4) / 6.0f;
     }
 
@@ -549,6 +576,7 @@ void PlayScene::RenderUI() {
         ImGui::BeginDisabled();
     }
     if (ImGui::Button("Start calculation") && !isCalc) {
+
         StartCalculation();
         
     }
@@ -567,9 +595,6 @@ void PlayScene::RenderUI() {
     }
     if (ImGui::Button(isPlaying ? "Stop animation": "Show animation")) {
         isPlaying = !isPlaying;
-        if (isPlaying) {
-            //InitPoints();
-        }
     }
     if (isCalc || calcProgress == 0) {
         ImGui::EndDisabled();
@@ -637,6 +662,10 @@ void PlayScene::SetupCamera() {
 }
 
 void PlayScene::InitPoints() {
+    if (pointsVAO != 0) {
+        glDeleteVertexArrays(1, &pointsVAO);
+        glDeleteBuffers(1, &pointsVBO);
+    }
     if (pos.empty()) return;
 
     // Create vector with positions and colors (yellow)

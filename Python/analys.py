@@ -174,7 +174,7 @@ def runge_kutta_integration(acc, time_deltas):
 
 def main():
     # 1. Загрузка данных с учетом времени
-    quaternions, acc, time_deltas = load_data('sensor_data/recording_20250331_204713.csv')
+    quaternions, acc, time_deltas = load_data('../C++/main/out/build/x64-Debug/data_example/recording_20250331_230347.csv')
     print(time_deltas)
     # Средняя частота дискретизации (для фильтрации)
     sample_rate = 1 / np.mean(time_deltas)

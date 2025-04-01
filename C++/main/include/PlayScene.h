@@ -108,7 +108,7 @@ private:
 	glm::vec3 cubePosition;
 	glm::mat3x3 cubeRotation;
 	
-	int tp = 0;
+	int currentFrame = 0;
 };
 
 #endif // PLAYSCENE_H
