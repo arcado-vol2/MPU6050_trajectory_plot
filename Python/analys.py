@@ -3,40 +3,14 @@ from scipy import signal
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d import Axes3D
-from pyquaternion import Quaternion  # Установите через pip install pyquaternion
-
-def parse_time(time_str):
-    """Parse time string in HOURS:MINUTES:SECONDS.MICROSECONDS format"""
-    try:
-        # Разделяем на части до и после точки
-        if '.' in time_str:
-            time_part, micro_part = time_str.split('.')
-            microseconds = float('0.' + micro_part)
-        else:
-            time_part = time_str
-            microseconds = 0.0
-        
-        # Разбираем основную часть времени
-        time_components = list(map(float, time_part.split(':')))
-        
-        # Добавляем нули если компонентов меньше 3 (например, только секунды)
-        while len(time_components) < 3:
-            time_components.insert(0, 0.0)
-            
-        hours, minutes, seconds = time_components[:3]
-        
-        total_seconds = hours * 3600 + minutes * 60 + seconds + microseconds
-        return total_seconds
-    except Exception as e:
-        print(f"Error parsing time string '{time_str}': {e}")
-        return 0.0
+from pyquaternion import Quaternion  # Install via pip install pyquaternion
 
 def load_data(filename):
-    """Загрузка данных из файла: время, q0,q1,q2,q3,accX,accY,accZ"""
+    """Load data from file: time, q0,q1,q2,q3,accX,accY,accZ"""
     with open(filename) as f:
         lines = f.readlines()
     
-    # Пропускаем заголовок если есть
+    # Skip header if present
     if not lines[0][0].isdigit():
         lines = lines[1:]
     
@@ -50,15 +24,15 @@ def load_data(filename):
     
     data = np.array(data)
     timestamps = data[:, 0]
-    quaternions = data[:, 1:5]  # Колонки 1-4: кватернион [w, x, y, z]
-    acc = data[:, 5:8]         # Колонки 5-7: акселерометр [X, Y, Z]
+    quaternions = data[:, 1:5]  # Columns 1-4: quaternion [w, x, y, z]
+    acc = data[:, 5:8]         # Columns 5-7: accelerometer [X, Y, Z]
     
     
     return quaternions, acc, timestamps
 
 def quaternion_to_rotation_matrix(q):
-    """Конвертация кватерниона в матрицу вращения"""
-    q = q / np.linalg.norm(q)  # Нормализация
+    """Convert quaternion to rotation matrix"""
+    q = q / np.linalg.norm(q)  # Normalization
     w, x, y, z = q
     return np.array([
         [1 - 2*y**2 - 2*z**2,     2*x*y - 2*z*w,     2*x*z + 2*y*w],
@@ -67,7 +41,7 @@ def quaternion_to_rotation_matrix(q):
     ])
 
 def plot_data(acc, title):
-    """Визуализация данных акселерометра"""
+    """Visualize accelerometer data"""
     plt.figure(figsize=(10, 6))
     plt.plot(acc[:, 0], 'r', label='X')
     plt.plot(acc[:, 1], 'g', label='Y')
@@ -80,11 +54,11 @@ def plot_data(acc, title):
     plt.show()
 
 def six_dof_animation(positions, rotations, sample_plot_freq=8):
-    """Анимация движения в 3D пространстве с полной траекторией"""
+    """6DOF motion animation with full trajectory"""
     fig = plt.figure(figsize=(12, 8))
     ax = fig.add_subplot(111, projection='3d')
     
-    # Настройка пределов осей на основе всей траектории
+    # Set axis limits based on entire trajectory
     margin = 0.1
     ax.set_xlim([np.min(positions[:, 0])-margin, np.max(positions[:, 0])+margin])
     ax.set_ylim([np.min(positions[:, 1])-margin, np.max(positions[:, 1])+margin])
@@ -94,20 +68,20 @@ def six_dof_animation(positions, rotations, sample_plot_freq=8):
     ax.set_zlabel('Z (m)')
     ax.set_title('6DOF Animation with Full Trajectory')
     
-    # Создаем полную траекторию один раз (она не будет изменяться)
+    # Create full trajectory once (it won't change)
     full_trajectory = ax.plot(positions[:, 0], positions[:, 1], positions[:, 2], 
                             'grey', linewidth=1, alpha=0.5)[0]
     
-    # Создаем "пройденную" часть траектории (будет увеличиваться)
+    # Create "progress" part of trajectory (will grow)
     progress_trajectory = ax.plot([], [], [], 'r-', linewidth=2)[0]
     
-    # Создаем объекты для осей ориентации
+    # Create orientation axis objects
     x_axis = ax.plot([], [], [], 'r-', linewidth=2)[0]
     y_axis = ax.plot([], [], [], 'g-', linewidth=2)[0]
     z_axis = ax.plot([], [], [], 'b-', linewidth=2)[0]
     
     def init():
-        # Инициализируем только изменяемые объекты
+        # Initialize only mutable objects
         progress_trajectory.set_data([], [])
         progress_trajectory.set_3d_properties([])
         x_axis.set_data([], [])
@@ -126,14 +100,14 @@ def six_dof_animation(positions, rotations, sample_plot_freq=8):
         current_pos = positions[idx]
         R = rotations[idx]
         
-        # Длина осей ориентации (5% от размера сцены)
+        # Orientation axis length (5% of scene size)
         axis_length = 0.4 * np.max([
             np.ptp(positions[:, 0]),
             np.ptp(positions[:, 1]),
             np.ptp(positions[:, 2])
         ])
         
-        # Обновляем оси ориентации
+        # Update orientation axes
         x_end = current_pos + R[:, 0] * axis_length
         y_end = current_pos + R[:, 1] * axis_length
         z_end = current_pos + R[:, 2] * axis_length
@@ -147,7 +121,7 @@ def six_dof_animation(positions, rotations, sample_plot_freq=8):
         z_axis.set_data([current_pos[0], z_end[0]], [current_pos[1], z_end[1]])
         z_axis.set_3d_properties([current_pos[2], z_end[2]])
         
-        # Обновляем "пройденную" часть траектории
+        # Update "progress" part of trajectory
         progress_trajectory.set_data(positions[:idx+1, 0], positions[:idx+1, 1])
         progress_trajectory.set_3d_properties(positions[:idx+1, 2])
         
@@ -173,55 +147,55 @@ def runge_kutta_integration(acc, time_deltas):
     return vel
 
 def main():
-    # 1. Загрузка данных с учетом времени
+    # 1. Load data with timestamps
     quaternions, acc, time_deltas = load_data('../C++/main/out/build/x64-Debug/data_example/recording_20250401_235146.csv')
     print(time_deltas)
-    # Средняя частота дискретизации (для фильтрации)
+    # Average sampling rate (for filtering)
     sample_rate = 1 / np.mean(time_deltas)
-    filter_cutoff = 0.1  # Частота среза фильтра (Гц)
+    filter_cutoff = 0.1  # Filter cutoff frequency (Hz)
     
-    # 2. Визуализация исходных данных
+    # 2. Visualize raw data
     plot_data(acc, 'Raw Accelerometer Data')
     
-    # 3. Расчет матриц вращения
+    # 3. Calculate rotation matrices
     rotations = np.zeros((len(quaternions), 3, 3))
     for i, q in enumerate(quaternions):
         rotations[i] = quaternion_to_rotation_matrix(q)
     
-    # 4. Компенсация наклона акселерометра
+    # 4. Tilt compensation for accelerometer
     tc_acc = np.zeros_like(acc)
     for i in range(len(acc)):
         tc_acc[i] = rotations[i] @ acc[i]
     
     plot_data(tc_acc, 'Tilt-Compensated Accelerometer')
     
-    # 5. Расчет линейного ускорения (без гравитации)
-    lin_acc = tc_acc - np.array([0, 0, 1])  # Вычитаем гравитацию
-    lin_acc *= 9.81  # Конвертация g в м/с²
+    # 5. Calculate linear acceleration (without gravity)
+    lin_acc = tc_acc - np.array([0, 0, 1])  # Subtract gravity
+    lin_acc *= 9.81  # Convert g to m/s²
     
-    # 6. Расчет линейной скорости (интегрирование ускорения)
+    # 6. Calculate linear velocity (acceleration integration)
     lin_vel = runge_kutta_integration(lin_acc, time_deltas)
 
-    # 7. Фильтрация скорости (удаление дрейфа)
+    # 7. Velocity filtering (remove drift)
     nyquist = 0.5 * sample_rate
     normal_cutoff = filter_cutoff / nyquist
     
-    # Проверка что частота в допустимом диапазоне
+    # Verify frequency is in valid range
     if normal_cutoff >= 1.0:
-        normal_cutoff = 0.99  # Устанавливаем чуть меньше 1
+        normal_cutoff = 0.99  # Set slightly below 1
     elif normal_cutoff <= 0.0:
-        normal_cutoff = 0.01  # Устанавливаем чуть больше 0
+        normal_cutoff = 0.01  # Set slightly above 0
     
     b, a = signal.butter(1, normal_cutoff, 'high')
     lin_vel_hp = signal.filtfilt(b, a, lin_vel, axis=0)
     
-    # 8. Расчет позиции (интегрирование скорости)
+    # 8. Calculate position (velocity integration)
     lin_pos = runge_kutta_integration(lin_vel_hp, time_deltas)
     
-    # 9. Фильтрация позиции (удаление дрейфа)
+    # 9. Position filtering (remove drift)
     lin_pos_hp = signal.filtfilt(b, a, lin_pos, axis=0)
     
-    # 10. Визуализация результатов
+    # 10. Visualize results
     fig, axs = plt.subplots(3, 1, figsize=(10, 8))
     titles = ['Linear Acceleration', 'Linear Velocity', 'Linear Position']
     data = [lin_acc, lin_vel_hp, lin_pos_hp]
@@ -240,7 +214,7 @@ def main():
     plt.tight_layout()
     plt.show()
     
-    # 11. Анимация движения
+    # 11. Motion animation
     six_dof_animation(lin_pos_hp, rotations)
 
 if __name__ == "__main__":
