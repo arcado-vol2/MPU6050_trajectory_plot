@@ -40,6 +40,7 @@ private:
 	void Integrate(int i, const std::vector<float>& input, std::vector<float>& output);
 	void HighPass3DFilter(std::vector<float>& data, float sample_rate, float cutoff);
 	void ConvertVtoPos(int i);
+	void SaveToSCV(const std::vector<float>& data, int s, const char* header, const char* name);
 	
 	//integration methods
 	void SquaresIntegration(int i, const std::vector<float>& input, std::vector<float>& output);
@@ -72,7 +73,8 @@ private:
 	std::vector<float> pos;
 
 	std::string csvFilePath = "";
-
+	std::string outputPath = "";
+	bool saveCalculations = false;
 	
 	const char* integrationMethods[3] = {"Method of Squares", "Trapezoidal Rule", "Runge-Kutta Method"};
 	const int integrationMethodsCount = sizeof(integrationMethods) / sizeof(integrationMethods[0]);

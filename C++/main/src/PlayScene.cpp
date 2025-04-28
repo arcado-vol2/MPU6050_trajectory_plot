@@ -171,8 +171,8 @@ void PlayScene::Update() {
 
     if (calculationFuture.valid() &&
         calculationFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-        calculationFuture.get();  // Убедимся, что исключения (если есть) будут проброшены
-        InitPoints();  // Запускаем метод после завершения расчётов
+        calculationFuture.get(); 
+        InitPoints();
     }
 
     if (isPlaying) {
@@ -390,8 +390,10 @@ void PlayScene::StartCalculation() {
 
 
 
-void SaveToSCV(const std::vector<float>& data, int s, const char* header, const char* name) {
-    std::ofstream file(name);
+void PlayScene::SaveToSCV(const std::vector<float>& data, int s, const char* header, const char* name) {
+    if (!saveCalculations || outputPath == "") return;
+
+    std::ofstream file(outputPath + "/" + name);
     file << header << "\n";
     for (int i = 0; i < data.size(); i += s) {
         for (int j = 0; j < s; j++) {
@@ -415,9 +417,9 @@ void PlayScene::Calculate() {
         std::cerr << "Not enough data!\n";
         return;
     }
-    SaveToSCV(as, 3, "ax,ay,az", "data/1_raw_acc.csv");
-    SaveToSCV(ts, 1, "delta_t", "data/1_delta_t.csv");
-    SaveToSCV(qs, 4, "qw,qx,qy,qz", "data/1_raw_quarant.csv");
+    SaveToSCV(as, 3, "ax,ay,az", "1_raw_acc.csv");
+    SaveToSCV(ts, 1, "delta_t", "1_delta_t.csv");
+    SaveToSCV(qs, 4, "qw,qx,qy,qz", "1_raw_quarant.csv");
     
     //2. Calculate rotation matrices
     for (int i = 0; i < qs.size(); i += Q_SIZE) {
@@ -429,21 +431,21 @@ void PlayScene::Calculate() {
         AddRotationMatrix(w, x, y, z);
         calculationProgress.store(calculationProgress + 1);
     }
-    SaveToSCV(Rs, 9, "R11,R12,R13,R21,R22,R23,R31,R32,R33", "data/2_R.csv");
+    SaveToSCV(Rs, 9, "R11,R12,R13,R21,R22,R23,R31,R32,R33", "2_R.csv");
 
     //3. Tilt compensation
     for (int i = 0; i < ts.size(); i++) {
         TiltCompensateA(i);
         calculationProgress.store(calculationProgress + 1);
     }
-    SaveToSCV(as, 3, "ax,ay,az", "data/3_rot_comp_acc.csv");
+    SaveToSCV(as, 3, "ax,ay,az", "3_rot_comp_acc.csv");
 
     //4. Convert to linear velocity
     for (int i = 0; i < ts.size(); i++) {
         CompensateGravity(i);
         calculationProgress.store(calculationProgress + 1);
     }
-    SaveToSCV(as, 3, "ax,ay,az", "data/4_g_comp_acc.csv");
+    SaveToSCV(as, 3, "ax,ay,az", "4_g_comp_acc.csv");
 
     //5. Velocity calculation
     double sampleRate = 0.0; //for 6.
@@ -457,14 +459,14 @@ void PlayScene::Calculate() {
 
     }
     sampleRate = 1.0 / (sampleRate / ts.size());
-    SaveToSCV(vs, 3, "vx,vy,vz", "data/5_raw_velocity.csv");
+    SaveToSCV(vs, 3, "vx,vy,vz", "5_raw_velocity.csv");
 
     //6. Drift compensation
     double nyQuist = 0.5f * sampleRate;
     double normalCutoff = filterCutoff / nyQuist;
     HighPass3DFilter(vs, sampleRate, normalCutoff);
     calculationProgress.store(calculationProgress + dataSize.load());
-    SaveToSCV(vs, 3, "vx,vy,vz", "data/6_filtered_velocity.csv");
+    SaveToSCV(vs, 3, "vx,vy,vz", "6_filtered_velocity.csv");
 
     //7. Position calculation
     pos.resize(vs.size());
@@ -472,13 +474,13 @@ void PlayScene::Calculate() {
         ConvertVtoPos(i);
         calculationProgress.store(calculationProgress + 1);
     }
-    SaveToSCV(pos, 3, "px,py,pz", "data/7_raw_position.csv");
+    SaveToSCV(pos, 3, "px,py,pz", "7_raw_position.csv");
 
     //8. Position filtration
     HighPass3DFilter(pos, sampleRate, normalCutoff);
     calculationProgress.store(calculationProgress + dataSize.load());
     std::cout << "Calc end\n";
-    SaveToSCV(pos, 3, "px,py,pz", "data/8_filtered_position.csv");
+    SaveToSCV(pos, 3, "px,py,pz", "8_filtered_position.csv");
     
     isCalculating = false;
 
@@ -513,7 +515,7 @@ void PlayScene::RungeKuttaIntegration(int i, const std::vector<float>& input, st
         return; 
     }
 
-    const float dt = ts[i]; // шаг времени
+    const float dt = ts[i]; 
     const float half_dt = dt * 0.5f;
 
     for (int k = 0; k < 3; ++k) {
@@ -544,15 +546,24 @@ void PlayScene::RenderUI() {
     if (isCalc) {
         ImGui::BeginDisabled();
     }
-    if (ImGui::Button("Choose data file")) {
 
+    if (ImGui::Button("Choose input data file")) {
         csvFilePath = UIStuff::OpenFileDialog(L"*.txt;*.csv");
         calculationProgress.store(0);
     }
-    ImGui::Text("Selected path:");
+    ImGui::Text("Input file path:");
     ImGui::SameLine();
     ImGui::Text("%s", csvFilePath.c_str());
 
+
+    if (ImGui::Button("Choose output path")) {
+
+        outputPath = UIStuff::OpenFolderDialog();
+        calculationProgress.store(0);
+    }
+    ImGui::Text("Output path:");
+    ImGui::SameLine();
+    ImGui::Text("%s", outputPath.c_str());
     ImGui::Separator();
 
     ImGui::Text("Select integration method");
@@ -583,7 +594,7 @@ void PlayScene::RenderUI() {
     if (csvFilePath == "" || isPlaying) {
         ImGui::EndDisabled();
     }
-
+    ImGui::Checkbox("Save calculations to files", &saveCalculations);
     
 
     ImGui::Text("Calculation progress:");
@@ -697,10 +708,70 @@ void PlayScene::InitPoints() {
 
 void PlayScene::InitCube() {
     {
-        float halfSize = CUBE_SIZE / 32.0f;
-        cubePosition = glm::vec3(0.1f, 0.1f, 0.1f);
+        float BOARD_WIDTH = 0.6f;
+        float BOARD_HEIGHT = 1.0f;
+        float BOARD_THICKNESS = 0.1f;
+        float AXIS_LENGTH = 1.5f;
+
+        float halfW = BOARD_WIDTH / 16.0f;
+        float halfH = BOARD_HEIGHT / 16.0f;
+        float halfT = BOARD_THICKNESS / 16.0f;
+
+
+        cubePosition = glm::vec3(0.0f, 0.0f, 0.0f);
         cubeRotation = glm::mat3x3(1, 0, 0, 0, 1, 0, 0, 0, 1);
 
+        std::vector<float> vertices = {
+            //front
+            -halfW, -halfH,  halfT,  0.8f, 0.2f, 0.2f,
+             halfW, -halfH,  halfT,  0.8f, 0.2f, 0.2f,
+             halfW,  halfH,  halfT,  0.8f, 0.2f, 0.2f,
+             halfW,  halfH,  halfT,  0.8f, 0.2f, 0.2f,
+            -halfW,  halfH,  halfT,  0.8f, 0.2f, 0.2f,
+            -halfW, -halfH,  halfT,  0.8f, 0.2f, 0.2f,
+
+            //back
+            -halfW, -halfH, -halfT,  0.8f, 0.2f, 0.2f,
+             halfW, -halfH, -halfT,  0.8f, 0.2f, 0.2f,
+             halfW,  halfH, -halfT,  0.8f, 0.2f, 0.2f,
+             halfW,  halfH, -halfT,  0.8f, 0.2f, 0.2f,
+            -halfW,  halfH, -halfT,  0.8f, 0.2f, 0.2f,
+            -halfW, -halfH, -halfT,  0.8f, 0.2f, 0.2f,
+
+            //left
+            -halfW,  halfH,  halfT,  0.6f, 0.1f, 0.1f,
+            -halfW,  halfH, -halfT,  0.6f, 0.1f, 0.1f,
+            -halfW, -halfH, -halfT,  0.6f, 0.1f, 0.1f,
+            -halfW, -halfH, -halfT,  0.6f, 0.1f, 0.1f,
+            -halfW, -halfH,  halfT,  0.6f, 0.1f, 0.1f,
+            -halfW,  halfH,  halfT,  0.6f, 0.1f, 0.1f,
+
+            //right
+             halfW,  halfH,  halfT,  0.6f, 0.1f, 0.1f,
+             halfW,  halfH, -halfT,  0.6f, 0.1f, 0.1f,
+             halfW, -halfH, -halfT,  0.6f, 0.1f, 0.1f,
+             halfW, -halfH, -halfT,  0.6f, 0.1f, 0.1f,
+             halfW, -halfH,  halfT,  0.6f, 0.1f, 0.1f,
+             halfW,  halfH,  halfT,  0.6f, 0.1f, 0.1f,
+
+             //bottom
+             -halfW, -halfH, -halfT,  0.5f, 0.1f, 0.1f,
+              halfW, -halfH, -halfT,  0.5f, 0.1f, 0.1f,
+              halfW, -halfH,  halfT,  0.5f, 0.1f, 0.1f,
+              halfW, -halfH,  halfT,  0.5f, 0.1f, 0.1f,
+             -halfW, -halfH,  halfT,  0.5f, 0.1f, 0.1f,
+             -halfW, -halfH, -halfT,  0.5f, 0.1f, 0.1f,
+
+             //top
+             -halfW,  halfH, -halfT,  0.7f, 0.2f, 0.2f,
+              halfW,  halfH, -halfT,  0.7f, 0.2f, 0.2f,
+              halfW,  halfH,  halfT,  0.7f, 0.2f, 0.2f,
+              halfW,  halfH,  halfT,  0.7f, 0.2f, 0.2f,
+             -halfW,  halfH,  halfT,  0.7f, 0.2f, 0.2f,
+             -halfW,  halfH, -halfT,  0.7f, 0.2f, 0.2f
+        };
+
+        /*
         std::vector<float> vertices = {
             // Front face (red)
             -halfSize, -halfSize,  halfSize,  0.8f, 0.2f, 0.2f,
@@ -750,7 +821,7 @@ void PlayScene::InitCube() {
              -halfSize,  halfSize,  halfSize,  0.7f, 0.2f, 0.2f,
              -halfSize,  halfSize, -halfSize,  0.7f, 0.2f, 0.2f
         };
-
+        */
         glGenVertexArrays(1, &cubeVAO);
         glGenBuffers(1, &cubeVBO);
 
@@ -801,15 +872,15 @@ void PlayScene::InitCube() {
 void PlayScene::InitAxes() {
     std::vector<float> vertices = {
         // X axis (red)
-        0.0f, 0.0f, 0.0f, 1.0f, 0.6f, 0.6f,
+        -AXIS_LENGTH, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
         AXIS_LENGTH, 0.0f, 0.0f, 1.0f, 0.6f, 0.6f,
 
         // Y axis (green)
-        0.0f, 0.0f, 0.0f, 0.6f, 1.0f, 0.6f,
+        0.0f, -AXIS_LENGTH, 0.0f, 0.0f, 1.0f, 0.6f,
         0.0f, AXIS_LENGTH, 0.0f, 0.6f, 1.0f, 0.6f,
 
         // Z axis (blue)
-        0.0f, 0.0f, 0.0f, 0.6f, 0.6f, 1.0f,
+        0.0f, 0.0f, -AXIS_LENGTH, 0.0f, 0.0f, 1.0f,
         0.0f, 0.0f, AXIS_LENGTH, 0.6f, 0.6f, 1.0f
     };
 

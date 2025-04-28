@@ -6,7 +6,7 @@
 
 class Scene {
 public:
-    Scene(COM::Port* comPort) : p_comPort(comPort) {}  // Изменили на указатель
+    Scene(COM::Port* comPort) : p_comPort(comPort) {} 
 
     virtual ~Scene() = default;
     virtual void InitRender() = 0;
@@ -15,7 +15,7 @@ public:
     virtual void RenderUI() = 0;
 
 public:
-    COM::Port* p_comPort;  // Изменили на указатель
+    COM::Port* p_comPort;
 };
 
 #endif // SCENE_H

@@ -6,7 +6,7 @@
 #define SERIAL_SPEED 115200
 #define ENABLE_CALIBRATION 1
 #define ACCEL_SCALE 8192.0
-#define FILTER_COOEF 0.93
+#define FILTER_COOEF 0.8
 
 MPU6050 mpu;
 volatile bool mpuFlag = false;  // mpu interaption flag
@@ -24,7 +24,7 @@ VectorInt16 aaFiltered = VectorInt16(0,0,ACCEL_SCALE);
 
 
 void setup() {
-  
+  pinMode(A6, INPUT);
 
   bool allowCalibration;
 
@@ -46,9 +46,6 @@ void setup() {
 
   mpu.initialize();
   mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
-  //Serial.print("Current accel range: ±");
-  //Serial.print(2 << mpu.getFullScaleAccelRange());
-  //Serial.println("g");
 
   mpu.dmpInitialize();
   mpu.setDMPEnabled(true);
@@ -95,7 +92,6 @@ void CompFilter(int input, int& filtered){
 }
 
 void loop() {
-
   #pragma region button
   if (buttonReleased) {
     buttonReleased = false;
@@ -111,6 +107,10 @@ void loop() {
   #pragma endregion
   
   if (outputEnabled && mpuFlag && mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) {
+
+    
+
+
     Quaternion q;
     VectorFloat gravity;
     VectorInt16 aa;
@@ -126,6 +126,7 @@ void loop() {
     CompFilter(aa.z, aaFiltered.z);
     
     mpuFlag = false;
+    
     
     Serial.print(millis() - lastMeasurementTime); Serial.print(',');
     Serial.print(q.w, 4);                Serial.print(',');

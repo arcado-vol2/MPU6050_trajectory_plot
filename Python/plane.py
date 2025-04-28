@@ -9,7 +9,7 @@ import csv
 from datetime import datetime
 import os
 
-ser = serial.Serial('COM5', 230400, timeout=0.001)
+ser = serial.Serial('COM5', 115200, timeout=0.001)
 ser.flushInput()
 
 # Параметры платы
@@ -110,12 +110,12 @@ def read_serial():
                 
             # Если идет запись и строка содержит данные кватерниона
             print(line)
-            if is_recording and line.count(',') == 6:
+            if is_recording and line.count(',') == 8:
                 try:
                     data = list(map(float, line.split(',')))
                     if len(data) == 7:
                         # Сохраняем все данные, но для вращения используем только кватернион
-                        q = np.array(data[:4])  # Только кватернион
+                        q = np.array(data[1:5])  # Только кватернион
                         
                         if csv_writer is not None:
                             timestamp = datetime.now().strftime('%H:%M:%S.%f')

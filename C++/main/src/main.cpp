@@ -21,7 +21,6 @@
 #include "NoRenderScene.h"
 #include "RecordScene.h"
 #include "PlayScene.h"
-#include "RealtimeScene.h"
 
 #define TARGET_FPS 60
 
@@ -58,7 +57,6 @@ std::unique_ptr<Scene> CreateScene(SceneType type) {
     case SceneType::NORENDER: return std::make_unique<NoRenderScene>(currentPort.get());
     case SceneType::RECORD: return std::make_unique<RecordScene>(currentPort.get());
     case SceneType::PLAY: return std::make_unique<PlayScene>(currentPort.get());
-    case SceneType::REALTIME: return std::make_unique<RealtimeScene>(currentPort.get());
     default: return nullptr;
     }
 }
@@ -127,7 +125,7 @@ int main(void)
 
     SceneType currentSceneType = SceneType::NORENDER;
     auto currentScene = CreateScene(currentSceneType);
-    const char* sceneItems[] = { "No Render", "Record", "Play", "Realtime" };
+    const char* sceneItems[] = { "No Render", "Record", "Play"};
     UpdateAvailablePorts();
 
     while (!glfwWindowShouldClose(window))
