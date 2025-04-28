@@ -1,4 +1,4 @@
-```markdown
+
 # Описание файлов проекта
 
 ## ComPort.h / ComPort.cpp
@@ -80,4 +80,3 @@
 **Методы:**
 - `glDebugOutput()` - обработчик ошибок OpenGL
 - `enableReportGlErrors()` - включение отладки OpenGL
-```
