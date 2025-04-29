@@ -6,7 +6,7 @@
 #define SERIAL_SPEED 115200
 #define ENABLE_CALIBRATION 1
 #define ACCEL_SCALE 8192.0
-#define FILTER_COOEF 0.8
+#define FILTER_COOEF 0.2
 
 MPU6050 mpu;
 volatile bool mpuFlag = false;  // mpu interaption flag
